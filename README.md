@@ -146,8 +146,8 @@ through the existing OpenAI-compatible adapter.
 ## Setup
 
 ```bash
-git clone https://github.com/<you>/llm-router.git
-cd llm-router
+git clone https://github.com/RachitSethi2455/cost-aware-model-router.git
+cd cost-aware-model-router
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
