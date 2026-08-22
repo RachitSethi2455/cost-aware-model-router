@@ -1,0 +1,28 @@
+# Secrets
+.env
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+
+# Project data
+data/response_cache.sqlite
+data/router_clf.joblib
+results/*.json
+
+# Keep the results directory and committed artifacts
+!results/.gitkeep
+!results/cost_quality.png
+
+# Editors / OS
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.DS_Store

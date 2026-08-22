@@ -1,0 +1,13 @@
+# Install only the SDK for the provider you use; both are safe to keep.
+anthropic>=0.40.0
+openai>=1.50.0
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+pydantic>=2.9.0
+scikit-learn>=1.5.0
+numpy>=1.26.0
+joblib>=1.4.0
+matplotlib>=3.9.0
+python-dotenv>=1.0.0
+pytest>=8.3.0
+httpx>=0.27.0
