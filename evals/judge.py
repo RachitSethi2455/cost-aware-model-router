@@ -3,8 +3,7 @@
 Method: reference-based grading. The large model's answer is treated as the
 reference, and each candidate answer is graded against it on a 0-2 scale.
 
-Known limitation to state openly in your README (interviewers respect this
-more than a clean number): treating the large model's output as ground truth
+Known limitation, documented in the README: treating the large model's output as ground truth
 caps measured quality at 1.00 for the all-large arm by construction. It
 measures *quality retention under routing*, not absolute correctness. A human-
 labeled subset would be needed for the latter.

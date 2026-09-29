@@ -1,7 +1,7 @@
 """Query feature extraction.
 
 Six cheap, interpretable features. Interpretability matters here: when the
-router misroutes, you want to be able to say *why* in an interview, and a
+router misroutes, you want to be able to explain *why*, and a
 logistic regression over named features lets you read the coefficients.
 
 Deliberately no embeddings — an embedding call would cost as much as the

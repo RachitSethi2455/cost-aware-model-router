@@ -1,6 +1,6 @@
 """Post-hoc quality guards on the small model's output.
 
-Design note worth defending in an interview: these are *deterministic checks*,
+Design note: these are *deterministic checks*,
 not a second LLM call. Asking a model "was your answer good?" costs as much as
 just using the big model, and self-assessment is unreliable. Cheap structural
 signals catch most real failures for free.

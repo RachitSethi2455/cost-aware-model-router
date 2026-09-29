@@ -4,8 +4,8 @@
 A per-request LLM router: classify query complexity, dispatch to a small or
 large model, escalate to the large model when the small one's answer fails
 deterministic quality checks. The deliverable is not just working code — it is
-a **measured result** (cost saved vs quality retained) that can be defended in
-an interview.
+a **measured result** (cost saved vs quality retained) backed by a reproducible
+benchmark run.
 
 ## Non-negotiable constraints
 - **Never weaken the heuristic baseline to flatter the classifier.** The

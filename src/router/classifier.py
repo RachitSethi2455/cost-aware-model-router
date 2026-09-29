@@ -53,7 +53,7 @@ def load(path: Path = MODEL_ARTIFACT) -> Pipeline | None:
 
 
 def coefficients(pipe: Pipeline) -> dict[str, float]:
-    """Readable feature weights — useful for the README and for interviews."""
+    """Readable feature weights — used for the README and for debugging misroutes."""
     clf = pipe.named_steps["clf"]
     return dict(zip(FEATURE_NAMES, clf.coef_[0].round(3).tolist()))
 

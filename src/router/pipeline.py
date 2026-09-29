@@ -2,7 +2,7 @@
 
     query -> features -> router -> model call -> escalation check -> response
 
-Supports three modes so the benchmark can run all arms through identical code
+Supports four modes so the benchmark can run all arms through identical code
 (important: if the baselines went through a different code path, the
 comparison would be confounded).
 """

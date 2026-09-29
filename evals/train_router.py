@@ -3,8 +3,8 @@
 Labels come from the dataset's `prior` field by default. If you have already
 run the benchmark, pass --from-benchmark to relabel using observed outcomes:
 a query is labeled 'small suffices' only if the small model actually scored
-full marks on it. That is the more defensible label source, and saying so in
-an interview shows you understand where ground truth comes from.
+full marks on it. That is the more defensible label source, because it reflects
+observed outcomes rather than hand-assigned priors.
 
 Usage:
     python evals/train_router.py

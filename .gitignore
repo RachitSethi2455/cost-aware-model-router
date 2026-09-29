@@ -21,8 +21,5 @@ results/*.json
 !results/cost_quality.png
 
 # Editors / OS
-.vscode/*
-!.vscode/settings.json
-!.vscode/launch.json
-!.vscode/extensions.json
+.vscode/
 .DS_Store
