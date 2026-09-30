@@ -74,8 +74,9 @@ def coefficients(pipe: Pipeline) -> dict[str, float]:
 class ClassifierRouter:
     """Wraps the trained pipeline with a heuristic fallback."""
 
-    def __init__(self, path: Path = MODEL_ARTIFACT):
-        self.pipe = load(path)
+    def __init__(self, path: Path = MODEL_ARTIFACT, pipe: Pipeline | None = None):
+        # pipe: an in-memory model, for hosts with a read-only filesystem.
+        self.pipe = pipe if pipe is not None else load(path)
         self.trained = self.pipe is not None
 
     def route(self, query: str, threshold: float = 0.5) -> tuple[str, float]:
