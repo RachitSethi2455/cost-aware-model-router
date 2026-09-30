@@ -79,3 +79,30 @@ def test_success_is_200(client):
         "/route", json={"query": "capital of Japan?"})
     assert r.status_code == 200
     assert r.json()["answer"].startswith("Tokyo")
+
+
+class TestOpenAICompatUsage:
+    """Cost accounting against a fake OpenAI-compatible client."""
+
+    def make_provider(self, usage):
+        from types import SimpleNamespace as NS
+        from router.providers.openai_compat import OpenAICompatProvider
+
+        p = OpenAICompatProvider(base_url="http://localhost:11434/v1", api_key_env="UNSET_KEY")
+        resp = NS(
+            choices=[NS(message=NS(content="answer"), finish_reason="stop")],
+            usage=usage,
+        )
+        p.client = NS(chat=NS(completions=NS(create=lambda **kw: resp)))
+        return p
+
+    def test_hidden_reasoning_tokens_count_as_output(self):
+        from types import SimpleNamespace as NS
+        p = self.make_provider(NS(prompt_tokens=19, completion_tokens=40, total_tokens=1039))
+        _, in_tok, out_tok, stop, err = p.complete("m", "q", None, 1024)
+        assert (in_tok, out_tok, stop, err) == (19, 1020, "end_turn", None)
+
+    def test_plain_usage_unchanged(self):
+        from types import SimpleNamespace as NS
+        p = self.make_provider(NS(prompt_tokens=10, completion_tokens=20, total_tokens=30))
+        assert p.complete("m", "q", None, 1024)[1:3] == (10, 20)
