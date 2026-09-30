@@ -24,7 +24,7 @@ benchmark run.
 ## Layout
 ```
 src/router/config.py       model tiers, pricing, PRESETS per provider
-src/router/features.py     6 interpretable features (no embeddings — too costly)
+src/router/features.py     7 interpretable features (no embeddings — too costly)
 src/router/heuristic.py    rule baseline
 src/router/classifier.py   logistic regression + heuristic fallback
 src/router/escalation.py   deterministic guards on small-model output

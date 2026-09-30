@@ -21,7 +21,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import numpy as np  # noqa: E402
-from sklearn.model_selection import StratifiedKFold, cross_val_score  # noqa: E402
+from sklearn.model_selection import (  # noqa: E402
+    RepeatedStratifiedKFold,
+    StratifiedKFold,
+    cross_val_score,
+)
 
 from router.classifier import coefficients, save, train  # noqa: E402
 from router.config import MODEL_ARTIFACT  # noqa: E402
@@ -74,8 +78,15 @@ def main() -> None:
     cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
     scores = cross_val_score(build_pipeline(), X, y, cv=cv, scoring="accuracy")
     f1 = cross_val_score(build_pipeline(), X, y, cv=cv, scoring="f1")
-    print(f"5-fold CV accuracy: {scores.mean():.3f} (+/- {scores.std():.3f})")
-    print(f"5-fold CV F1:       {f1.mean():.3f} (+/- {f1.std():.3f})")
+    # One 5-fold split of 60 examples swings by several points depending on
+    # the seed; the mean over 20 reshuffled splits is the number to report.
+    rcv = RepeatedStratifiedKFold(n_splits=5, n_repeats=20, random_state=0)
+    r_acc = cross_val_score(build_pipeline(), X, y, cv=rcv, scoring="accuracy")
+    r_f1 = cross_val_score(build_pipeline(), X, y, cv=rcv, scoring="f1")
+    print(f"Repeated 5-fold CV (20x) accuracy: {r_acc.mean():.3f} (+/- {r_acc.std():.3f})  <- report this")
+    print(f"Repeated 5-fold CV (20x) F1:       {r_f1.mean():.3f} (+/- {r_f1.std():.3f})")
+    print(f"Single 5-fold CV accuracy (seed 42): {scores.mean():.3f} (+/- {scores.std():.3f})")
+    print(f"Single 5-fold CV F1 (seed 42):       {f1.mean():.3f} (+/- {f1.std():.3f})")
     print("NOTE: report the CV number, not train accuracy. With ~60 examples "
           "the std is wide; say so rather than quoting a point estimate.")
 

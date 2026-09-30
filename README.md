@@ -10,7 +10,7 @@ bill is spent on requests that never needed the expensive model?**
 
 ```
                       ┌──────────────────┐
-   query ────────────▶│ feature extract  │  6 interpretable features
+   query ────────────▶│ feature extract  │  7 interpretable features
                       └────────┬─────────┘
                                ▼
                       ┌──────────────────┐
@@ -46,7 +46,7 @@ back." These catch most real failures for free.
 a misroute costs latency and one extra call, not a wrong answer. This is why
 the router can be aggressive about sending traffic to the small model.
 
-**Six interpretable features, no embeddings.** An embedding call would cost as
+**Seven interpretable features, no embeddings.** An embedding call would cost as
 much as the routing decision saves. Logistic regression over named features
 also means the coefficients are readable — see below.
 
@@ -73,18 +73,32 @@ confounded:
 |---|---|
 | Majority class baseline | 55.0% |
 | Heuristic rules | 56.7% |
-| Logistic regression (5-fold CV) | 80.0% ± 6.7% |
+| Logistic regression, 6 features | 75.7% ± 8.9% |
+| **Logistic regression, 7 features (current)** | **78.2% ± 9.7%** |
+
+Classifier numbers are the mean of 20 reshuffled stratified 5-fold splits
+(`python evals/train_router.py`). An earlier version of this README quoted
+80.0% from a single 5-fold split; with 60 examples one split swings by
+several points depending on the seed, so the repeated-CV mean is the honest
+figure.
+
+The seventh feature, `asks_for_code`, was added after live testing showed
+"Write a Python function to merge two sorted lists" routed to the small model:
+`has_code` only detects code pasted *into* a query, not a request *for* code.
+The +2.5 point gain is within one standard deviation, and the feature was
+designed after seeing the eval set, so treat it as directional.
 
 **Learned feature weights** (positive pushes toward the large model):
 
 | Feature | Coefficient |
 |---|---|
-| `reasoning_marker_count` | +1.146 |
-| `simple_marker_count` | −0.969 |
-| `n_constraints` | −0.719 |
-| `n_sentences` | +0.425 |
-| `n_words` | +0.385 |
-| `has_code` | +0.377 |
+| `reasoning_marker_count` | +1.149 |
+| `simple_marker_count` | −0.909 |
+| `asks_for_code` | +0.711 |
+| `n_constraints` | −0.664 |
+| `has_code` | +0.460 |
+| `n_words` | +0.316 |
+| `n_sentences` | +0.309 |
 
 ## Known limitations
 
@@ -114,6 +128,31 @@ Written up deliberately — these are the interesting parts.
    Arithmetic, letter-counting, and one-word ambiguous prompts look trivial by
    every surface feature but need the large model. Surface features cannot fix
    this; it needs either a semantic signal or an accepted escalation cost.
+
+## Lessons from live testing
+
+The offline test suite passed from day one. Running against real Gemini
+models still found four bugs, each now fixed and covered by a test:
+
+1. **Thinking models eat the output budget.** With `max_tokens=1024`,
+   `gemini-3.8-flash` spent ~980 tokens on hidden reasoning and returned a
+   40-token fragment (`finish_reason=length`). Claude Opus 5 also thinks by
+   default. `MAX_TOKENS` is now 8192, and the judge's budget went from 200 to
+   2048 for the same reason.
+2. **Hidden reasoning tokens were not billed.** Gemini reports them only in
+   `total_tokens`, so the large model looked ~25x cheaper than it was, which
+   would have inflated the headline saving. They are now counted as output.
+3. **Failures looked like successes.** If both tiers failed, `/route` returned
+   200 with an empty answer. It now returns 502 with the provider error, and a
+   missing API key returns 503 instead of 500.
+4. **`.env` was never loaded,** and a stale system-wide `GEMINI_API_KEY`
+   silently overrode it (confusing 401s). `.env` is now loaded on startup,
+   with a warning when a system variable overrides it.
+
+The first benchmark smoke run on the free tier also hit quota limits (429s)
+and "high demand" errors (503s). The benchmark now retries with backoff,
+drops questions whose reference answer could not be produced, and reports
+call and judge failures per arm instead of silently scoring them as 0.
 
 ## Using a different provider
 
@@ -151,8 +190,14 @@ cd cost-aware-model-router
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 
-cp .env.example .env        # add your ANTHROPIC_API_KEY
+cp .env.example .env        # pick PROVIDER_PRESET and add that provider's key
 ```
+
+To try it for free, use `PROVIDER_PRESET=gemini` with a key from Google AI
+Studio; both Gemini tiers have a free tier (with daily quotas, and free-tier
+prompts may be used by Google to improve its products). If a key in `.env`
+seems ignored, check for the same variable set system-wide: system
+environment variables take precedence, and the router prints a warning.
 
 ## Usage
 
@@ -199,6 +244,14 @@ curl localhost:8000/stats
 ```
 
 Interactive docs at `http://localhost:8000/docs`.
+
+`/route` status codes:
+
+| Code | Meaning |
+|---|---|
+| 200 | Answered. `tier_served` and `escalated` say which model produced it. |
+| 502 | The provider failed (bad model id, rate limit, overload) and escalation could not rescue it. `detail.error` has the provider's message. |
+| 503 | Not configured (missing API key or SDK). Nothing was sent to any model. |
 
 ### Docker
 

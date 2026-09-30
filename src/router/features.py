@@ -1,6 +1,6 @@
 """Query feature extraction.
 
-Six cheap, interpretable features. Interpretability matters here: when the
+Seven cheap, interpretable features. Interpretability matters here: when the
 router misroutes, you want to be able to explain *why*, and a
 logistic regression over named features lets you read the coefficients.
 
@@ -31,6 +31,15 @@ SIMPLE_MARKERS = {
 CODE_HINT = re.compile(r"```|\bdef \b|\bclass \b|\bSELECT\b|\bimport \b|[{};]")
 QUESTION_MARK = re.compile(r"\?")
 
+# A request *for* code, as opposed to code pasted *into* the query (CODE_HINT).
+# "Write a Python function to ..." has no code in it, so has_code alone
+# routed it to the small model.
+CODE_REQUEST = re.compile(
+    r"\b(write|implement|build|create|refactor|fix|debug)\b[^.?!\n]{0,40}"
+    r"\b(function|class|query|script|endpoint|program|code|api|cache|sql|python)\b",
+    re.IGNORECASE,
+)
+
 FEATURE_NAMES = [
     "n_words",
     "n_sentences",
@@ -38,6 +47,7 @@ FEATURE_NAMES = [
     "simple_marker_count",
     "has_code",
     "n_constraints",
+    "asks_for_code",
 ]
 
 
@@ -49,6 +59,7 @@ class QueryFeatures:
     simple_marker_count: int
     has_code: int
     n_constraints: int
+    asks_for_code: int
 
     def to_vector(self) -> list[float]:
         """Ordered vector matching FEATURE_NAMES."""
@@ -87,4 +98,5 @@ def extract(query: str) -> QueryFeatures:
         simple_marker_count=_count_markers(query, SIMPLE_MARKERS),
         has_code=1 if CODE_HINT.search(query) else 0,
         n_constraints=_count_constraints(query),
+        asks_for_code=1 if CODE_REQUEST.search(query) else 0,
     )
