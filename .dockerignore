@@ -1,0 +1,13 @@
+# Secrets and local state never go into the build context
+.env
+data/
+results/
+
+# Local environments and tooling
+.venv/
+venv/
+.git/
+.github/
+.pytest_cache/
+**/__pycache__/
+*.log
