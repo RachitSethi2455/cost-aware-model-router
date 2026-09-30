@@ -10,6 +10,17 @@ from pathlib import Path
 import os
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+# Load .env before any os.getenv below. Real environment variables win over
+# the file, so CI and shells can still override it. Optional so the offline
+# logic stays importable without python-dotenv installed.
+try:
+    from dotenv import load_dotenv
+except ImportError:  # pragma: no cover
+    pass
+else:
+    load_dotenv(PROJECT_ROOT / ".env", override=False)
+
 RESULTS_DIR = PROJECT_ROOT / "results"
 DATA_DIR = PROJECT_ROOT / "data"
 CACHE_PATH = DATA_DIR / "response_cache.sqlite"
