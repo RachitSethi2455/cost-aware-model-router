@@ -188,7 +188,7 @@ through the existing OpenAI-compatible adapter.
 git clone https://github.com/RachitSethi2455/cost-aware-model-router.git
 cd cost-aware-model-router
 python -m venv .venv && source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt   # runtime deps + pytest, matplotlib
 
 cp .env.example .env        # pick PROVIDER_PRESET and add that provider's key
 ```
