@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LLM Router Demo</title>
+<meta name="description" content="Type a question and see whether the adaptive LLM router sends it to a cheap or an expensive model, and why.">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #6f6d68;
+    --hairline: #e1e0d9;
+    --baseline: #c3c2b7;
+    --ring: rgba(11, 11, 11, 0.10);
+    --large: #2a78d6;       /* pushes toward / chosen: large model */
+    --small: #e34948;       /* pushes toward: small model */
+    --track: #cde2fb;       /* meter track: lighter step of the fill's ramp */
+    --accent-ink: #1c5cab;  /* links and focus, text-safe blue */
+    --code-bg: #f0efec;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #9a988f;
+      --hairline: #2c2c2a;
+      --baseline: #383835;
+      --ring: rgba(255, 255, 255, 0.10);
+      --large: #3987e5;
+      --small: #e66767;
+      --track: #104281;
+      --accent-ink: #86b6ef;
+      --code-bg: #262624;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #9a988f;
+    --hairline: #2c2c2a;
+    --baseline: #383835;
+    --ring: rgba(255, 255, 255, 0.10);
+    --large: #3987e5;
+    --small: #e66767;
+    --track: #104281;
+    --accent-ink: #86b6ef;
+    --code-bg: #262624;
+  }
+
+  * { box-sizing: border-box; }
+  .visually-hidden {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip: rect(0 0 0 0); white-space: nowrap;
+  }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 64px; }
+  a { color: var(--accent-ink); }
+  :focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
+  header h1 { font-size: 28px; line-height: 1.2; margin: 0 0 8px; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--ink-2); }
+  .meta-links { margin-top: 12px; font-size: 14px; color: var(--muted); }
+
+  section { margin-top: 32px; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .sub { margin: 0 0 16px; color: var(--ink-2); font-size: 14px; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--ring);
+    border-radius: 12px;
+    padding: 20px;
+  }
+
+  label.q { display: block; font-weight: 600; margin-bottom: 8px; }
+  textarea {
+    width: 100%;
+    min-height: 88px;
+    resize: vertical;
+    padding: 12px;
+    border: 1px solid var(--baseline);
+    border-radius: 8px;
+    background: var(--page);
+    color: var(--ink);
+    font: inherit;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+  button {
+    font: inherit;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .primary {
+    background: var(--ink);
+    color: var(--page);
+    border: 0;
+    padding: 9px 18px;
+    font-weight: 600;
+  }
+  .primary:disabled { opacity: 0.55; cursor: progress; }
+  .chip {
+    background: transparent;
+    color: var(--ink-2);
+    border: 1px solid var(--baseline);
+    padding: 6px 12px;
+    font-size: 14px;
+  }
+  .chip:hover { border-color: var(--ink-2); color: var(--ink); }
+  .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+
+  /* Result */
+  #result[hidden] { display: none; }
+  .decision { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 16px; }
+  .decision .label { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .decision .tier { font-size: 26px; font-weight: 650; }
+  .decision .why-short { color: var(--ink-2); font-size: 14px; flex-basis: 100%; }
+
+  .meter-head { display: flex; justify-content: space-between; font-size: 14px; color: var(--ink-2); margin-bottom: 6px; }
+  .meter-head strong { color: var(--ink); }
+  .meter { position: relative; height: 12px; border-radius: 4px; background: var(--track); }
+  .meter .fill {
+    position: absolute; left: 0; top: 0; bottom: 0;
+    background: var(--large);
+    border-radius: 0 4px 4px 0;
+    transition: width 0.35s ease;
+  }
+  .meter .tick {
+    position: absolute; top: -4px; bottom: -4px; width: 2px;
+    background: var(--ink); transform: translateX(-1px);
+  }
+  .meter-scale { position: relative; height: 18px; font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .meter-scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .meter-scale span:first-child { transform: none; }
+  .meter-scale span:last-child { transform: translateX(-100%); }
+
+  .why { margin-top: 24px; }
+  .why h3 { font-size: 15px; margin: 0 0 4px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--ink-2); margin: 0 0 12px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+  table.contrib { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.contrib td { padding: 5px 0; vertical-align: middle; }
+  table.contrib td.name { padding-right: 10px; white-space: nowrap; }
+  table.contrib td.val { color: var(--muted); font-variant-numeric: tabular-nums; text-align: right; padding-right: 12px; width: 3em; }
+  table.contrib td.bar { width: 50%; }
+  table.contrib td.num { font-variant-numeric: tabular-nums; text-align: right; width: 4.2em; color: var(--ink-2); }
+  .dbar { position: relative; height: 14px; }
+  .dbar::before { /* zero baseline */
+    content: ""; position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--baseline);
+  }
+  .dbar i { position: absolute; top: 0; bottom: 0; }
+  .dbar i.pos { left: 50%; background: var(--large); border-radius: 0 4px 4px 0; }
+  .dbar i.neg { right: 50%; background: var(--small); border-radius: 4px 0 0 4px; }
+  .footnote { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
+  .error { color: var(--ink); border-left: 3px solid var(--small); padding-left: 10px; }
+
+  /* Recorded answers */
+  details.ex { border-top: 1px solid var(--hairline); }
+  details.ex:first-of-type { border-top: 0; }
+  details.ex summary {
+    cursor: pointer; list-style: none; padding: 14px 0;
+    display: grid; grid-template-columns: 1fr auto; gap: 4px 12px;
+  }
+  details.ex summary::-webkit-details-marker { display: none; }
+  .ex-q { font-weight: 600; }
+  .ex-meta { font-size: 13px; color: var(--ink-2); grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .ex-meta .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+  .ex-toggle { font-size: 13px; color: var(--accent-ink); white-space: nowrap; }
+  details[open] .ex-toggle .closed, details:not([open]) .ex-toggle .opened { display: none; }
+  .answer { padding: 0 0 18px; font-size: 15px; overflow-wrap: anywhere; }
+  .answer h1, .answer h2, .answer h3, .answer h4 { font-size: 15px; margin: 18px 0 6px; }
+  .answer p { margin: 8px 0; }
+  .answer ul, .answer ol { padding-left: 22px; margin: 8px 0; }
+  .answer hr { border: 0; border-top: 1px solid var(--hairline); margin: 16px 0; }
+  .answer code { background: var(--code-bg); border-radius: 4px; padding: 1px 5px; font-size: 0.92em; }
+  .answer pre { background: var(--code-bg); border-radius: 8px; padding: 12px; overflow-x: auto; }
+  .answer pre code { background: none; padding: 0; }
+  .answer .tbl { overflow-x: auto; }
+  .answer table { border-collapse: collapse; font-size: 14px; margin: 8px 0; }
+  .answer th, .answer td { border: 1px solid var(--hairline); padding: 6px 8px; text-align: left; vertical-align: top; }
+  .compare { font-size: 14px; color: var(--ink-2); margin: 0 0 8px; }
+
+  ol.how { padding-left: 20px; margin: 0; color: var(--ink-2); }
+  ol.how li { margin: 6px 0; }
+  ol.how strong { color: var(--ink); }
+  footer { margin-top: 40px; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Adaptive LLM Router</h1>
+    <p>Most questions don't need the most expensive model. This router decides, per question, whether a cheap model is enough, and escalates to the large one when the cheap answer fails quality checks.</p>
+    <div class="meta-links"><a href="https://github.com/RachitSethi2455/cost-aware-model-router">Source on GitHub</a> · <a href="/docs">API docs</a></div>
+  </header>
+
+  <section aria-labelledby="try-h">
+    <h2 id="try-h">Try it</h2>
+    <p class="sub">Shows the routing decision only. No model is called, so it's free and instant.</p>
+    <div class="card">
+      <form id="form">
+        <label class="q" for="query">Your question</label>
+        <textarea id="query" maxlength="20000" placeholder="e.g. Explain why the CAP theorem is often oversimplified" required></textarea>
+        <div class="row">
+          <button class="primary" id="go" type="submit">Route it</button>
+          <span class="hint" style="margin:0">or try:</span>
+          <button type="button" class="chip" data-q="What is the capital of Australia?">Lookup</button>
+          <button type="button" class="chip" data-q="Write a Python function that merges overlapping intervals given a list of [start, end] pairs.">Code</button>
+          <button type="button" class="chip" data-q="Design a rate limiter for an API that must allow bursts but enforce a long-run average. Compare token bucket and sliding window approaches.">Design</button>
+          <button type="button" class="chip" data-q="Is 1729 prime?">Tricky</button>
+        </div>
+        <p class="hint">Tip: Ctrl + Enter to submit.</p>
+      </form>
+
+      <div id="result" hidden aria-live="polite">
+        <hr style="border:0;border-top:1px solid var(--hairline);margin:20px 0">
+        <div class="decision">
+          <span class="label">Routes to</span>
+          <span class="tier" id="tier"></span>
+          <span class="why-short" id="tier-note"></span>
+        </div>
+
+        <div class="meter-head">
+          <span>Probability it needs the large model</span>
+          <strong id="prob"></strong>
+        </div>
+        <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="1" id="meter">
+          <div class="fill" id="fill"></div>
+          <div class="tick" id="tick" title="Decision threshold"></div>
+        </div>
+        <div class="meter-scale" id="scale"></div>
+
+        <div class="why" id="why">
+          <h3>Why</h3>
+          <div class="legend">
+            <span><span class="swatch" style="background:var(--large)"></span>Pushes toward the large model</span>
+            <span><span class="swatch" style="background:var(--small)"></span>Pushes toward the small model</span>
+          </div>
+          <table class="contrib" id="contrib">
+            <thead class="visually-hidden"><tr><th>Signal</th><th>Value</th><th>Push</th><th>Log-odds</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="footnote" id="why-note"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="ex-h">
+    <h2 id="ex-h">Real answers from live testing</h2>
+    <p class="sub" id="ex-sub">Recorded on Google Gemini on 30 Sep 2026: <code>gemini-3.1-flash-lite</code> as the small model, <code>gemini-3.8-flash</code> as the large one. Costs are at paid-tier rates.</p>
+    <p class="compare" id="compare"></p>
+    <div class="card" id="examples" style="padding:0 20px"></div>
+    <p class="footnote">The code question was answered by the small model before the router learned the <code>asks_for_code</code> feature. It now routes that question to the large model, and the small model's answer above shows that was a cautious choice, not a necessary one.</p>
+  </section>
+
+  <section aria-labelledby="how-h">
+    <h2 id="how-h">How it works</h2>
+    <div class="card">
+      <ol class="how">
+        <li><strong>Read the question.</strong> Seven cheap, readable signals: reasoning words, simple-task words, whether it asks for or contains code, length, and listed constraints. No embeddings: an embedding call would cost as much as the routing saves.</li>
+        <li><strong>Decide.</strong> A logistic regression turns those signals into a probability. At 0.50 or above, the question goes to the large model. It agrees with hand labels 78% of the time (mean of 20 repeated 5-fold splits), against 55% for always guessing the common answer.</li>
+        <li><strong>Check the cheap answer.</strong> Deterministic checks, not a second AI call: empty, refused, cut off, hedging, or missing code that was asked for.</li>
+        <li><strong>Escalate if needed.</strong> A failed check retries once on the large model, so a wrong routing guess costs one extra call, not a wrong answer.</li>
+      </ol>
+    </div>
+  </section>
+
+  <footer>Built by Rachit Sethi. The router, evaluation harness and this page are open source.</footer>
+</main>
+
+<script>
+(() => {
+  const FEATURE_LABELS = {
+    reasoning_marker_count: "Reasoning words",
+    simple_marker_count: "Simple-task words",
+    asks_for_code: "Asks for code",
+    has_code: "Contains code",
+    n_constraints: "Listed constraints",
+    n_words: "Word count",
+    n_sentences: "Sentences",
+  };
+  const $ = (id) => document.getElementById(id);
+  const form = $("form"), query = $("query"), go = $("go");
+
+  const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtSigned = (x) => (x >= 0 ? "+" : "−") + Math.abs(x).toFixed(2);
+
+  async function explain(q) {
+    go.disabled = true;
+    try {
+      const res = await fetch("/explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: q }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(typeof body.detail === "string" ? body.detail : `Request failed (${res.status})`);
+      render(body);
+    } catch (err) {
+      $("result").hidden = false;
+      $("tier").textContent = "";
+      $("tier-note").innerHTML = `<span class="error">${esc(err.message)}</span>`;
+      $("why").hidden = true;
+    } finally {
+      go.disabled = false;
+    }
+  }
+
+  function render(r) {
+    $("result").hidden = false;
+    $("why").hidden = false;
+    const large = r.tier === "large";
+    $("tier").textContent = large ? "Large model" : "Small model";
+    $("tier-note").textContent = large
+      ? "Needs more capability. The router pays for the expensive model up front."
+      : "A cheap, fast model should handle this. If its answer fails the quality checks, it's retried on the large model.";
+
+    const p = r.confidence, t = r.threshold;
+    $("prob").textContent = p.toFixed(2);
+    $("fill").style.width = (p * 100).toFixed(1) + "%";
+    $("tick").style.left = (t * 100) + "%";
+    const meter = $("meter");
+    meter.setAttribute("aria-valuenow", p.toFixed(2));
+    meter.setAttribute("aria-label", `Probability ${p.toFixed(2)}, threshold ${t.toFixed(2)}`);
+    $("scale").innerHTML = `<span style="left:0">0</span><span style="left:${t * 100}%">threshold ${t.toFixed(2)}</span><span style="left:100%">1</span>`;
+
+    const tbody = $("contrib").querySelector("tbody");
+    if (!r.contributions) {
+      tbody.innerHTML = "";
+      $("why-note").textContent = "The trained model isn't loaded, so the rule-based fallback decided. Run evals/train_router.py to enable the breakdown.";
+      return;
+    }
+    const feats = [...r.contributions.features].sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution));
+    // Fixed minimum half-width so bars stay comparable between questions.
+    const half = Math.max(2.5, ...feats.map((f) => Math.abs(f.contribution)));
+    tbody.innerHTML = feats.map((f) => {
+      const w = (Math.abs(f.contribution) / half) * 50;
+      const cls = f.contribution >= 0 ? "pos" : "neg";
+      const dir = f.contribution >= 0 ? "toward large" : "toward small";
+      const label = FEATURE_LABELS[f.name] || f.name;
+      const value = Number.isInteger(f.value) ? f.value : f.value.toFixed(1);
+      return `<tr title="${esc(label)}: value ${value}, ${fmtSigned(f.contribution)} log-odds ${dir}">
+        <td class="name">${esc(label)}</td>
+        <td class="val">${value}</td>
+        <td class="bar"><div class="dbar"><i class="${cls}" style="width:${w.toFixed(1)}%"></i></div></td>
+        <td class="num">${fmtSigned(f.contribution)}</td>
+      </tr>`;
+    }).join("");
+    $("why-note").textContent =
+      `Numbers are each signal's push in log-odds, added to a starting point of ${fmtSigned(r.contributions.intercept)}. ` +
+      "The router only sees surface signals, so short questions that are secretly hard (arithmetic, letter counting) are its known weak spot; escalation is the safety net.";
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const q = query.value.trim();
+    if (q) explain(q);
+  });
+  query.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) form.requestSubmit();
+  });
+  document.querySelectorAll(".chip").forEach((b) => b.addEventListener("click", () => {
+    query.value = b.dataset.q;
+    explain(b.dataset.q);
+  }));
+
+  // Minimal markdown for the recorded answers. Everything is HTML-escaped
+  // first, so model output can never inject markup into the page.
+  function md(src) {
+    const inline = (s) => esc(s)
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/(^|[^*])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>")
+      .replace(/\$([^$\n]+)\$/g, "<code>$1</code>");
+    const lines = src.replace(/\r/g, "").split("\n");
+    const out = [];
+    let i = 0, list = null, para = [];
+    const flushPara = () => { if (para.length) { out.push(`<p>${inline(para.join(" "))}</p>`); para = []; } };
+    const closeList = () => { if (list) { out.push(`</${list}>`); list = null; } };
+    while (i < lines.length) {
+      const line = lines[i];
+      if (/^```/.test(line)) {
+        flushPara(); closeList();
+        const code = [];
+        i++;
+        while (i < lines.length && !/^```/.test(lines[i])) code.push(lines[i++]);
+        out.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
+        i++; continue;
+      }
+      if (/^\s*\|/.test(line)) {
+        flushPara(); closeList();
+        const rows = [];
+        while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
+        const cells = (r) => r.trim().replace(/^\||\|$/g, "").split("|").map((c) => c.trim());
+        const body = rows.filter((r) => !/^\s*\|[\s:|-]+\|\s*$/.test(r));
+        const [head, ...rest] = body;
+        out.push(`<div class="tbl"><table><thead><tr>${cells(head).map((c) => `<th>${inline(c)}</th>`).join("")}</tr></thead><tbody>` +
+          rest.map((r) => `<tr>${cells(r).map((c) => `<td>${inline(c)}</td>`).join("")}</tr>`).join("") + "</tbody></table></div>");
+        continue;
+      }
+      let m;
+      if ((m = line.match(/^(#{1,6})\s+(.*)$/))) {
+        flushPara(); closeList();
+        out.push(`<h4>${inline(m[2])}</h4>`);
+      } else if (/^\s*(-{3,}|\*{3,})\s*$/.test(line)) {
+        flushPara(); closeList();
+        out.push("<hr>");
+      } else if ((m = line.match(/^\s*[*-]\s+(.*)$/))) {
+        flushPara();
+        if (list !== "ul") { closeList(); out.push("<ul>"); list = "ul"; }
+        out.push(`<li>${inline(m[1])}</li>`);
+      } else if ((m = line.match(/^\s*\d+[.)]\s+(.*)$/))) {
+        flushPara();
+        if (list !== "ol") { closeList(); out.push("<ol>"); list = "ol"; }
+        out.push(`<li>${inline(m[1])}</li>`);
+      } else if (!line.trim()) {
+        flushPara(); closeList();
+      } else {
+        closeList();
+        para.push(line.trim());
+      }
+      i++;
+    }
+    flushPara(); closeList();
+    return out.join("\n");
+  }
+
+  const money = (x) => x < 0.001 ? "$" + x.toFixed(6) : "$" + x.toFixed(4);
+
+  fetch("/static/examples.json")
+    .then((r) => r.ok ? r.json() : Promise.reject(r.status))
+    .then((items) => {
+      const costs = items.map((e) => e.cost_usd);
+      const hi = items[costs.indexOf(Math.max(...costs))], lo = items[costs.indexOf(Math.min(...costs))];
+      $("compare").textContent =
+        `The most expensive answer (${hi.tier} model) cost ${Math.round(hi.cost_usd / lo.cost_usd)}× the cheapest (${lo.tier} model). Sending easy questions to the small model is where the savings come from.`;
+      $("examples").innerHTML = items.map((e) => `
+        <details class="ex">
+          <summary>
+            <span class="ex-q">${esc(e.query)}</span>
+            <span class="ex-toggle"><span class="closed">Show answer</span><span class="opened">Hide</span></span>
+            <span class="ex-meta">
+              <span><span class="dot" style="background:var(--${e.tier === "large" ? "large" : "small"})"></span>${e.tier === "large" ? "Large" : "Small"} model · <code>${esc(e.model_id)}</code></span>
+              <span>${money(e.cost_usd)}</span>
+              <span>${e.latency_s.toFixed(1)} s</span>
+              <span>${e.output_tokens.toLocaleString()} output tokens</span>
+            </span>
+          </summary>
+          <div class="answer">${md(e.answer)}</div>
+        </details>`).join("");
+    })
+    .catch(() => { $("examples").innerHTML = '<p class="sub" style="padding:16px 0">Recorded examples could not be loaded.</p>'; });
+})();
+</script>
+</body>
+</html>

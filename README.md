@@ -245,6 +245,29 @@ curl localhost:8000/stats
 
 Interactive docs at `http://localhost:8000/docs`.
 
+### Demo page
+
+`http://localhost:8000/` serves an interactive page: type a question and see
+which model the router picks, the probability against the threshold, and a
+per-feature breakdown of *why* (each feature's push in log-odds, which sums
+exactly to the decision). It only calls `/explain`, so it never spends a token.
+It also shows real answers recorded from live Gemini runs; refresh them with
+`python scripts/export_demo_examples.py` after running the queries live.
+
+### Deploying the public demo
+
+Set `PUBLIC_DEMO=1` on any public deployment. It disables `/route` (403) so
+strangers cannot spend your API key, and `/explain` is rate-limited per client
+(`EXPLAIN_RATE_LIMIT`, default 60/min). No API key is needed for the demo.
+
+The Docker image trains the router during the build and listens on `$PORT`:
+
+- **Render:** New Web Service from this GitHub repo, runtime Docker, add the
+  environment variable `PUBLIC_DEMO=1`. Render sets `PORT` itself.
+- **Hugging Face Spaces:** create a Docker Space, push this repo to it, and add
+  `sdk: docker` and `app_port: 8000` to the Space's README front matter; set
+  `PUBLIC_DEMO=1` under Settings → Variables.
+
 `/route` status codes:
 
 | Code | Meaning |
@@ -252,6 +275,7 @@ Interactive docs at `http://localhost:8000/docs`.
 | 200 | Answered. `tier_served` and `escalated` say which model produced it; `truncated` is true if the answer hit the token ceiling. |
 | 502 | The provider failed (bad model id, rate limit, overload) and escalation could not rescue it. `detail.error` has the provider's message. |
 | 503 | Not configured (missing API key or SDK). Nothing was sent to any model. |
+| 403 | `PUBLIC_DEMO=1`: model calls are disabled on a public deployment. |
 
 ### Docker
 
@@ -270,7 +294,7 @@ Delete `data/response_cache.sqlite` to force fresh calls.
 
 ```
 src/router/     config, features, heuristic, classifier, escalation, pipeline, llm, cache, types
-src/api/        FastAPI service
+src/api/        FastAPI service + demo page (static/)
 evals/          dataset.jsonl, judge, benchmark runner, router training
 tests/          offline unit tests
 scripts/        chart generation

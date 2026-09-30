@@ -115,3 +115,49 @@ class TestOpenAICompatUsage:
         from types import SimpleNamespace as NS
         p = self.make_provider(NS(prompt_tokens=10, completion_tokens=20, total_tokens=30))
         assert p.complete("m", "q", None, 1024)[1:3] == (10, 20)
+
+
+class TestDemo:
+    """The public demo page and the endpoints it relies on."""
+
+    @pytest.fixture
+    def app_client(self):
+        return TestClient(main.app)
+
+    def test_page_is_served(self, app_client):
+        r = app_client.get("/")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+        assert "Adaptive LLM Router" in r.text
+
+    def test_recorded_examples_are_valid(self, app_client):
+        items = app_client.get("/static/examples.json").json()
+        assert len(items) >= 2 and {e["tier"] for e in items} == {"small", "large"}
+        for e in items:
+            assert e["answer"].strip() and e["cost_usd"] > 0 and e["model_id"]
+
+    def test_contributions_explain_the_probability(self, app_client, monkeypatch, tmp_path):
+        import math
+        from router.classifier import ClassifierRouter, save, train
+        queries = ["What is the capital of France?", "Define an API.",
+                   "Explain why and compare the tradeoffs of two designs in depth.",
+                   "Write a Python function to parse logs and explain each step."]
+        path = tmp_path / "clf.joblib"
+        save(train(queries, [0, 0, 1, 1]), path)
+        monkeypatch.setattr(main, "_classifier", ClassifierRouter(path))
+
+        body = app_client.post("/explain", json={"query": "Write a Python function to sort a list."}).json()
+        c = body["contributions"]
+        logit = c["intercept"] + sum(f["contribution"] for f in c["features"])
+        assert body["router"] == "classifier"
+        assert abs(1 / (1 + math.exp(-logit)) - body["confidence"]) < 1e-3
+
+    def test_public_demo_blocks_model_calls(self, app_client, monkeypatch):
+        monkeypatch.setattr(main, "PUBLIC_DEMO", True)
+        r = app_client.post("/route", json={"query": "hi"})
+        assert r.status_code == 403
+
+    def test_explain_is_rate_limited(self, app_client, monkeypatch):
+        monkeypatch.setattr(main, "_explain_limiter", main.RateLimiter(2))
+        codes = [app_client.post("/explain", json={"query": "hi"}).status_code for _ in range(3)]
+        assert codes == [200, 200, 429]

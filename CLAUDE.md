@@ -31,7 +31,8 @@ src/router/escalation.py   deterministic guards on small-model output
 src/router/pipeline.py     orchestration; 4 modes for the benchmark arms
 src/router/llm.py          caching + cost accounting
 src/router/providers/      vendor adapters behind a Protocol
-src/api/main.py            FastAPI
+src/api/main.py            FastAPI (PUBLIC_DEMO disables /route)
+src/api/static/            demo page + recorded examples.json
 evals/                     dataset.jsonl, judge, benchmark, training
 ```
 

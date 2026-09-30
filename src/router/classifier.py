@@ -84,3 +84,24 @@ class ClassifierRouter:
         X = np.array([extract(query).to_vector()])
         p = float(self.pipe.predict_proba(X)[0][1])
         return ("large" if p >= threshold else "small"), p
+
+    def contributions(self, query: str) -> dict | None:
+        """Per-feature push toward the large model, in log-odds.
+
+        For scaler + logistic regression the decision is exactly
+        intercept + sum(coef_i * (x_i - mean_i) / scale_i), so each term is
+        that feature's contribution. None when running on the heuristic.
+        """
+        if not self.trained:
+            return None
+        scale = self.pipe.named_steps["scale"]
+        clf = self.pipe.named_steps["clf"]
+        x = np.array(extract(query).to_vector())
+        terms = clf.coef_[0] * (x - scale.mean_) / scale.scale_
+        return {
+            "intercept": float(clf.intercept_[0]),
+            "features": [
+                {"name": name, "value": float(v), "contribution": float(t)}
+                for name, v, t in zip(FEATURE_NAMES, x, terms)
+            ],
+        }
