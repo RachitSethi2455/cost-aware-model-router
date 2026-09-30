@@ -23,3 +23,6 @@ results/*.json
 # Editors / OS
 .vscode/
 .DS_Store
+
+# Logs
+*.log
