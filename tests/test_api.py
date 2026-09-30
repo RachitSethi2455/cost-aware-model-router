@@ -79,6 +79,15 @@ def test_success_is_200(client):
         "/route", json={"query": "capital of Japan?"})
     assert r.status_code == 200
     assert r.json()["answer"].startswith("Tokyo")
+    assert r.json()["truncated"] is False
+
+
+def test_truncated_large_answer_is_flagged(client):
+    cut = call("The CAP theorem says", "large")
+    cut.stop_reason = "max_tokens"
+    r = client(routed([cut])).post("/route", json={"query": "Explain CAP"})
+    assert r.status_code == 200
+    assert r.json()["truncated"] is True
 
 
 class TestOpenAICompatUsage:

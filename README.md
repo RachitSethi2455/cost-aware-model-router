@@ -249,7 +249,7 @@ Interactive docs at `http://localhost:8000/docs`.
 
 | Code | Meaning |
 |---|---|
-| 200 | Answered. `tier_served` and `escalated` say which model produced it. |
+| 200 | Answered. `tier_served` and `escalated` say which model produced it; `truncated` is true if the answer hit the token ceiling. |
 | 502 | The provider failed (bad model id, rate limit, overload) and escalation could not rescue it. `detail.error` has the provider's message. |
 | 503 | Not configured (missing API key or SDK). Nothing was sent to any model. |
 
