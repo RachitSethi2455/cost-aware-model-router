@@ -55,18 +55,28 @@ def _parse(text: str) -> dict:
 
 
 def grade(client: LLMClient, query: str, reference: str, candidate: str) -> dict:
-    """Return {'score': 0|1|2, 'reason': str, 'cost_usd': float}."""
+    """Return {'score': 0|1|2|None, 'reason': str, 'cost_usd': float}.
+
+    score is None when the judge call itself failed.
+    """
     if not candidate.strip():
         return {"score": 0, "reason": "empty_candidate", "cost_usd": 0.0}
     if candidate.strip() == reference.strip():
         return {"score": 2, "reason": "identical_to_reference", "cost_usd": 0.0}
 
+    # Thinking judges (e.g. gemini-3.8-flash) spend hidden reasoning tokens
+    # from this budget; at 200 the verdict came back empty.
     result = client.complete(
         JUDGE,
         JUDGE_TEMPLATE.format(query=query, reference=reference, candidate=candidate),
         system=JUDGE_SYSTEM,
-        max_tokens=200,
+        max_tokens=2048,
     )
+    if result.error:
+        # A failed judge call is not evidence the answer was bad; the
+        # benchmark excludes these from the quality mean and reports them.
+        return {"score": None, "reason": f"judge_error: {result.error[:120]}",
+                "cost_usd": 0.0}
     parsed = _parse(result.text)
     parsed["cost_usd"] = result.cost_usd
     return parsed
