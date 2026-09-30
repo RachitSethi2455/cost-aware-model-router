@@ -129,7 +129,7 @@ GROQ_API_KEY=gsk_...
 |---|---|---|---|
 | `anthropic` | Haiku 4.5 | Opus 5 | 5.0x |
 | `openai` | gpt-4o-mini | gpt-4o | 16.7x |
-| `gemini` | gemini-2.0-flash | gemini-2.5-pro | 12.5x |
+| `gemini` | gemini-3.1-flash-lite | gemini-3.8-flash | 3.0x |
 | `groq` | llama-3.1-8b | llama-3.3-70b | 11.8x |
 | `deepseek` | deepseek-chat | deepseek-reasoner | 2.0x |
 | `openrouter` | llama-3.1-8b | claude-sonnet-4.5 | 150x |

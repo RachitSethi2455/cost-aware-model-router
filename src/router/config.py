@@ -64,10 +64,13 @@ PRESETS: dict[str, dict[str, ModelSpec]] = {
         "large": ModelSpec("large", "gpt-4o", 2.50, 10.00, "openai"),
         "judge": ModelSpec("judge", "gpt-4o-mini", 0.15, 0.60, "openai"),
     },
+    # gemini-2.0-flash is shut down and 2.5 models are limited to existing
+    # users. Both tiers below have a free tier; the rates are paid-tier list
+    # prices (3.8 Flash rate is promotional through 2026-12-31).
     "gemini": {
-        "small": ModelSpec("small", "gemini-2.0-flash", 0.10, 0.40, "gemini"),
-        "large": ModelSpec("large", "gemini-2.5-pro", 1.25, 10.00, "gemini"),
-        "judge": ModelSpec("judge", "gemini-2.0-flash", 0.10, 0.40, "gemini"),
+        "small": ModelSpec("small", "gemini-3.1-flash-lite", 0.25, 1.50, "gemini"),
+        "large": ModelSpec("large", "gemini-3.8-flash", 0.75, 3.75, "gemini"),
+        "judge": ModelSpec("judge", "gemini-3.8-flash", 0.75, 3.75, "gemini"),
     },
     "groq": {
         "small": ModelSpec("small", "llama-3.1-8b-instant", 0.05, 0.08, "groq"),
