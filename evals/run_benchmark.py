@@ -32,6 +32,14 @@ DATASET = Path(__file__).parent / "dataset.jsonl"
 ARMS = ["always_small", "always_large", "heuristic", "classifier"]
 RETRY_DELAYS_S = (5, 15, 30)
 
+# Daily quotas don't recover within a retry window (Gemini free tier:
+# "GenerateRequestsPerDayPerProjectPerModel-FreeTier").
+DAILY_QUOTA_MARKERS = ("PerDay", "per day", "daily")
+
+
+class DailyQuotaExhausted(RuntimeError):
+    pass
+
 
 class RetryingClient(LLMClient):
     """Retries failed calls with backoff, for the benchmark only.
@@ -40,6 +48,10 @@ class RetryingClient(LLMClient):
     error would score as a wrong answer (or poison a reference) and the arms
     would differ by luck, not routing. The API path does not retry: there the
     escalation layer decides what a failure means.
+
+    A daily quota is not transient, so it stops the run instead. Successful
+    calls are cached, so re-running after the quota resets picks up where
+    this run stopped.
     """
 
     def complete(self, *args, **kwargs) -> CallResult:
@@ -47,6 +59,12 @@ class RetryingClient(LLMClient):
         for delay in RETRY_DELAYS_S:
             if not result.error:
                 break
+            if any(m in result.error for m in DAILY_QUOTA_MARKERS):
+                raise DailyQuotaExhausted(
+                    f"Daily quota exhausted for {result.model_id}. Completed calls "
+                    "are cached; re-run the same command after the quota resets "
+                    "to continue."
+                )
             time.sleep(delay)
             result = super().complete(*args, **kwargs)
         return result
@@ -180,12 +198,18 @@ def main() -> None:
     client = RetryingClient()
     print(f"Dataset: {len(rows)} queries ({', '.join(r['id'] for r in rows)})\n"
           "Building reference answers...")
-    refs = build_references(client, rows)
-    rows = [r for r in rows if r["id"] in refs]
+    try:
+        refs = build_references(client, rows)
+        rows = [r for r in rows if r["id"] in refs]
 
-    summaries = []
-    for arm in args.arms:
-        summaries.append(run_arm(arm, rows, refs, client, not args.no_escalation))
+        summaries = []
+        for arm in args.arms:
+            summaries.append(run_arm(arm, rows, refs, client, not args.no_escalation))
+    except DailyQuotaExhausted as exc:
+        # No partial results file: a table built from some arms and not
+        # others would invite exactly the comparison the benchmark prevents.
+        print(f"\nStopped: {exc}")
+        raise SystemExit(2) from None
 
     print_table(summaries)
 
