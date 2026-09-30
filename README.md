@@ -262,6 +262,10 @@ strangers cannot spend your API key, and `/explain` is rate-limited per client
 
 The Docker image trains the router during the build and listens on `$PORT`:
 
+- **Vercel:** import the repo as a new project; no settings needed. `app.py`
+  is the entrypoint: it turns `PUBLIC_DEMO` on by default and, because the
+  model file is not in git and the filesystem is read-only, trains the router
+  in memory on cold start (60 examples, deterministic, under a second).
 - **Render:** `render.yaml` is a Blueprint for the free plan with
   `PUBLIC_DEMO=1` set. In the Render dashboard choose New → Blueprint and
   pick this repo. Render sets `PORT` itself.

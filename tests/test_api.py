@@ -161,3 +161,29 @@ class TestDemo:
         monkeypatch.setattr(main, "_explain_limiter", main.RateLimiter(2))
         codes = [app_client.post("/explain", json={"query": "hi"}).status_code for _ in range(3)]
         assert codes == [200, 200, 429]
+
+
+def test_vercel_entrypoint_is_safe_and_self_training():
+    """app.py must default to demo mode and train in memory with no artifact.
+
+    Runs in a subprocess: the entrypoint sets PUBLIC_DEMO at import time,
+    which must not leak into the other tests.
+    """
+    import os
+    import subprocess
+    root = Path(__file__).resolve().parents[1]
+    script = (
+        "import sys; sys.path.insert(0, 'src')\n"
+        "import router.classifier as c\n"
+        "c.load = lambda path=None: None  # simulate a fresh deploy: no artifact\n"
+        "import app\n"
+        "clf = app.main.get_classifier()\n"
+        "print(app.main.PUBLIC_DEMO, clf.trained,"
+        " clf.route('Write a Python function to merge two sorted lists.')[0])\n"
+    )
+    env = {k: v for k, v in os.environ.items() if k != "PUBLIC_DEMO"}
+    env["OPENBLAS_NUM_THREADS"] = "1"
+    out = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
+                         capture_output=True, text=True, timeout=120)
+    assert out.returncode == 0, out.stderr
+    assert out.stdout.split() == ["True", "True", "large"]
