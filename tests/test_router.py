@@ -1,7 +1,7 @@
 """Unit tests — all offline, no API key needed.
 
 Keeping the deterministic logic testable without network access is deliberate:
-it means CI can run on every push for free, which is itself worth mentioning.
+it means CI can run on every push for free.
 """
 
 import sys

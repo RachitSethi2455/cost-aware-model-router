@@ -34,6 +34,8 @@ class OpenAICompatProvider:
             raise RuntimeError("pip install openai") from exc
 
         api_key = os.environ.get(api_key_env)
+        if not api_key and base_url.startswith(("http://localhost", "http://127.0.0.1")):
+            api_key = "local"
         if not api_key:
             raise RuntimeError(
                 f"{api_key_env} is not set. Add it to your .env file."

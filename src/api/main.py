@@ -5,6 +5,12 @@ Endpoints:
     POST /explain  - routing decision only, no model call (free, fast)
     GET  /health   - liveness + whether a trained router is loaded
     GET  /stats    - cumulative cost/tier counters for this process
+
+Error contract for /route:
+    503 - the router is not configured (missing API key, SDK not installed).
+          Nothing was sent to any model.
+    502 - the model provider failed (bad model id, rate limit, network error)
+          and there was no successful answer to fall back on.
 """
 
 from __future__ import annotations
@@ -85,7 +91,24 @@ def route(req: RouteRequest) -> RouteResponse:
     try:
         result = pipe.run(req.query, system=req.system)
     except RuntimeError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        # Raised while building a provider client, before any model call.
+        # This is a configuration problem, not a server crash.
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+    # The final call is the one whose answer we would return. If it failed
+    # (and escalation could not rescue it), returning 200 with an empty answer
+    # would hide the failure from the caller.
+    final = result.calls[-1]
+    if final.error:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "message": "Model provider call failed.",
+                "model_id": final.model_id,
+                "error": final.error,
+                "escalated": result.escalated,
+            },
+        )
 
     _counters[result.tier_served] += 1
     if result.escalated:
