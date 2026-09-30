@@ -59,6 +59,9 @@ class RouteResponse(BaseModel):
     cost_usd: float
     latency_s: float
     n_calls: int
+    # The served answer hit the token ceiling. Only a large-model answer can
+    # be returned truncated; a truncated small answer is escalated instead.
+    truncated: bool
 
 
 @app.get("/health")
@@ -125,6 +128,7 @@ def route(req: RouteRequest) -> RouteResponse:
         cost_usd=round(result.total_cost_usd, 6),
         latency_s=round(result.total_latency_s, 3),
         n_calls=len(result.calls),
+        truncated=final.stop_reason == "max_tokens",
     )
 
 
