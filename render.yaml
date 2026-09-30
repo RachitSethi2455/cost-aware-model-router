@@ -1,0 +1,16 @@
+# Render Blueprint for the public demo (https://render.com/docs/blueprint-spec).
+# Model calls are disabled (PUBLIC_DEMO=1), so no API key is needed and
+# visitors cannot spend one.
+services:
+  - type: web
+    name: llm-router-demo
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    # Redeploy on push only after the GitHub Actions test suite passes.
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: PUBLIC_DEMO
+        value: "1"
