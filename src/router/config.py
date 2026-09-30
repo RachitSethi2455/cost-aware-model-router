@@ -8,6 +8,7 @@ never disagree about what a request cost.
 from dataclasses import dataclass
 from pathlib import Path
 import os
+import sys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
@@ -15,11 +16,22 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 # the file, so CI and shells can still override it. Optional so the offline
 # logic stays importable without python-dotenv installed.
 try:
-    from dotenv import load_dotenv
+    from dotenv import dotenv_values, load_dotenv
 except ImportError:  # pragma: no cover
     pass
 else:
-    load_dotenv(PROJECT_ROOT / ".env", override=False)
+    _env_file = PROJECT_ROOT / ".env"
+    # A stale key set system-wide silently beats a fresh one in .env and
+    # shows up only as a confusing 401, so say which value is in use.
+    for _name, _value in dotenv_values(_env_file).items():
+        _existing = os.environ.get(_name)
+        if _value and _existing and _existing != _value:
+            print(
+                f"[router] warning: {_name} is set in your system environment "
+                f"and differs from .env; using the system value.",
+                file=sys.stderr,
+            )
+    load_dotenv(_env_file, override=False)
 
 RESULTS_DIR = PROJECT_ROOT / "results"
 DATA_DIR = PROJECT_ROOT / "data"
@@ -116,5 +128,8 @@ MIN_ANSWER_CHARS = int(os.getenv("MIN_ANSWER_CHARS", "20"))
 MAX_ESCALATIONS = 1  # one retry on the large model, never a loop
 
 # Generation settings, held constant across arms so the benchmark is fair.
-MAX_TOKENS = 1024
+# Thinking models (Gemini 3.x, Claude Opus 5) spend hidden reasoning tokens
+# out of this same budget before writing the answer. At 1024, gemini-3.8-flash
+# used ~980 on thinking and returned a 40-token fragment.
+MAX_TOKENS = 8192
 

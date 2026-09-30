@@ -75,6 +75,12 @@ class OpenAICompatProvider:
         # cost accounting degrades gracefully instead of silently reporting $0.
         if usage:
             in_tok, out_tok = usage.prompt_tokens, usage.completion_tokens
+            # Some providers (Gemini) report hidden reasoning tokens only in
+            # total_tokens. They are billed as output, so count them; otherwise
+            # a thinking model looks ~25x cheaper than it is.
+            hidden = (usage.total_tokens or 0) - in_tok - out_tok
+            if hidden > 0:
+                out_tok += hidden
         else:
             in_tok = len(prompt) // 4
             out_tok = len(text) // 4
