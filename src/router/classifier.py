@@ -1,4 +1,4 @@
-"""Learned router — logistic regression over the six extracted features.
+"""Learned router — logistic regression over the extracted features.
 
 Trained on the eval set's ground-truth labels (see evals/train_router.py).
 Falls back to the heuristic when no trained artifact is present, so the API
@@ -7,6 +7,7 @@ works on a clean checkout before you've trained anything.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import joblib
@@ -49,7 +50,19 @@ def save(pipe: Pipeline, path: Path = MODEL_ARTIFACT) -> None:
 def load(path: Path = MODEL_ARTIFACT) -> Pipeline | None:
     if not path.exists():
         return None
-    return joblib.load(path)
+    pipe = joblib.load(path)
+    # An artifact trained before a feature was added would crash on predict.
+    # Fall back to the heuristic and say how to fix it instead.
+    n_trained = getattr(pipe, "n_features_in_", len(FEATURE_NAMES))
+    if n_trained != len(FEATURE_NAMES):
+        print(
+            f"[router] warning: {path.name} was trained on {n_trained} features, "
+            f"current code has {len(FEATURE_NAMES)}. Using the heuristic router; "
+            "run `python evals/train_router.py` to retrain.",
+            file=sys.stderr,
+        )
+        return None
+    return pipe
 
 
 def coefficients(pipe: Pipeline) -> dict[str, float]:

@@ -42,6 +42,12 @@ class TestFeatures:
     def test_simple_markers(self):
         assert extract("What is a pointer? Define it.").simple_marker_count >= 1
 
+    def test_detects_code_request_without_code(self):
+        assert extract("Write a Python function to merge two sorted lists.").asks_for_code == 1
+        assert extract("Implement an LRU cache with O(1) get and put.").asks_for_code == 1
+        assert extract("What is the capital of Japan?").asks_for_code == 0
+        assert extract("Write a one-line git command to discard changes.").asks_for_code == 0
+
     def test_counts_constraints(self):
         q = "Do this:\n- first thing\n- second thing\nMake sure it compiles."
         assert extract(q).n_constraints >= 3
@@ -104,3 +110,19 @@ class TestEscalation:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestClassifierArtifact:
+    def test_stale_artifact_falls_back_to_heuristic(self, tmp_path):
+        import numpy as np
+        from router.classifier import ClassifierRouter, build_pipeline, save
+
+        # A model trained on fewer features than the code now extracts.
+        stale = build_pipeline().fit(np.array([[0.0] * 3, [1.0] * 3]), [0, 1])
+        path = tmp_path / "old.joblib"
+        save(stale, path)
+
+        router = ClassifierRouter(path)
+        assert router.trained is False
+        tier, _ = router.route("What is the capital of Japan?")
+        assert tier == "small"
