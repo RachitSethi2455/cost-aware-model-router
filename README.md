@@ -262,8 +262,9 @@ strangers cannot spend your API key, and `/explain` is rate-limited per client
 
 The Docker image trains the router during the build and listens on `$PORT`:
 
-- **Render:** New Web Service from this GitHub repo, runtime Docker, add the
-  environment variable `PUBLIC_DEMO=1`. Render sets `PORT` itself.
+- **Render:** `render.yaml` is a Blueprint for the free plan with
+  `PUBLIC_DEMO=1` set. In the Render dashboard choose New → Blueprint and
+  pick this repo. Render sets `PORT` itself.
 - **Hugging Face Spaces:** create a Docker Space, push this repo to it, and add
   `sdk: docker` and `app_port: 8000` to the Space's README front matter; set
   `PUBLIC_DEMO=1` under Settings → Variables.
