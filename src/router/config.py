@@ -89,6 +89,15 @@ PRESETS: dict[str, dict[str, ModelSpec]] = {
         "large": ModelSpec("large", "gemini-3.8-flash", 0.75, 3.75, "gemini"),
         "judge": ModelSpec("judge", "gemini-3.6-flash", 0.75, 3.75, "gemini"),
     },
+    # Same small model, with large/judge models that were actually available
+    # on the free tier in Oct 2026 (gemini-3.8-flash kept returning 503s and
+    # exhausting its 20/day quota). Smaller quality gap than "gemini", so
+    # expect a smaller measured saving.
+    "gemini-free": {
+        "small": ModelSpec("small", "gemini-3.1-flash-lite", 0.25, 1.50, "gemini"),
+        "large": ModelSpec("large", "gemini-3.6-flash", 0.75, 3.75, "gemini"),
+        "judge": ModelSpec("judge", "gemini-3.5-flash", 1.50, 9.00, "gemini"),
+    },
     "groq": {
         "small": ModelSpec("small", "llama-3.1-8b-instant", 0.05, 0.08, "groq"),
         "large": ModelSpec("large", "llama-3.3-70b-versatile", 0.59, 0.79, "groq"),
@@ -125,6 +134,11 @@ JUDGE = _active["judge"]
 TIERS = {"small": SMALL, "large": LARGE}
 
 # ---- Tunables -------------------------------------------------------------
+# Retries inside the vendor SDK (both SDKs default to 2). Callers that do
+# their own retrying should set 0: stacked retries multiply requests, and on
+# a 20-requests/day free tier one overloaded query could burn 12 of them.
+PROVIDER_MAX_RETRIES = int(os.getenv("PROVIDER_MAX_RETRIES", "2"))
+
 # Router decision threshold. P(complex) above this routes to LARGE.
 ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 

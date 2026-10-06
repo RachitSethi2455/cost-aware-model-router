@@ -186,6 +186,21 @@ and "high demand" errors (503s). The benchmark now retries with backoff,
 drops questions whose reference answer could not be produced, and reports
 call and judge failures per arm instead of silently scoring them as 0.
 
+Two more found later:
+
+5. **Stacked retries burned the quota.** The vendor SDKs retry twice on their
+   own, and the benchmark's backoff retried each of those three times, so one
+   overloaded query sent up to 12 requests against a 20-requests/day free
+   quota. SDK retries are now configurable (`PROVIDER_MAX_RETRIES`) and the
+   benchmark sets them to 0, keeping one visible retry policy.
+6. **A per-request threshold leaked into later requests.** `/route` stored
+   the caller's threshold on a pipeline shared by every request. It is now
+   passed per call.
+
+`gemini-3.8-flash` stayed unusable on the free tier (overloaded and
+quota-exhausted for a week), so the `gemini-free` preset uses
+`gemini-3.6-flash` as the large model and `gemini-3.5-flash` as the judge.
+
 ## Using a different provider
 
 The routing logic is provider-agnostic — only the transport differs. Vendor
@@ -201,6 +216,7 @@ GROQ_API_KEY=gsk_...
 | `anthropic` | Haiku 4.5 | Opus 5 | 5.0x |
 | `openai` | gpt-4o-mini | gpt-4o | 16.7x |
 | `gemini` | gemini-3.1-flash-lite | gemini-3.8-flash | 3.0x |
+| `gemini-free` | gemini-3.1-flash-lite | gemini-3.6-flash | 3.0x |
 | `groq` | llama-3.1-8b | llama-3.3-70b | 11.8x |
 | `deepseek` | deepseek-chat | deepseek-reasoner | 2.0x |
 | `openrouter` | llama-3.1-8b | claude-sonnet-4.5 | 150x |

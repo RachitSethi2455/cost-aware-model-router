@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import sys
 import time
@@ -21,6 +22,11 @@ from itertools import zip_longest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+# RetryingClient below owns retries for the benchmark. With the SDK's own
+# 2 retries on top, one failing query cost up to 12 requests (4 x 3).
+# Must be set before router.config is imported.
+os.environ.setdefault("PROVIDER_MAX_RETRIES", "0")
 
 from judge import grade  # noqa: E402
 from router.config import LARGE, RESULTS_DIR  # noqa: E402

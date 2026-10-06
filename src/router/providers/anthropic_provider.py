@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import os
 
+from ..config import PROVIDER_MAX_RETRIES
+
 
 class AnthropicProvider:
     def __init__(self, api_key_env: str = "ANTHROPIC_API_KEY"):
@@ -16,7 +18,7 @@ class AnthropicProvider:
         if not api_key:
             raise RuntimeError(f"{api_key_env} is not set. Add it to your .env file.")
         self._anthropic = anthropic
-        self.client = anthropic.Anthropic(api_key=api_key)
+        self.client = anthropic.Anthropic(api_key=api_key, max_retries=PROVIDER_MAX_RETRIES)
 
     def complete(self, model_id, prompt, system, max_tokens):
         kwargs = {

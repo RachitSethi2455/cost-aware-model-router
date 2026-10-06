@@ -204,3 +204,11 @@ def test_request_threshold_does_not_leak_into_later_requests(monkeypatch):
 
     assert c.post("/route", json={**q, "threshold": 0.0}).json()["tier_chosen"] == "large"
     assert c.post("/route", json=q).json()["tier_chosen"] == "small"
+
+
+def test_sdk_retries_follow_config():
+    """Stacked retries burn quota; the SDK must use the configured count."""
+    from router.config import PROVIDER_MAX_RETRIES
+    from router.providers.openai_compat import OpenAICompatProvider
+    p = OpenAICompatProvider(base_url="http://localhost:11434/v1", api_key_env="UNSET_KEY")
+    assert p.client.max_retries == PROVIDER_MAX_RETRIES

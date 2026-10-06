@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import os
 
+from ..config import PROVIDER_MAX_RETRIES
+
 
 class OpenAICompatProvider:
     def __init__(self, base_url: str, api_key_env: str, extra_headers: dict | None = None):
@@ -40,7 +42,7 @@ class OpenAICompatProvider:
             raise RuntimeError(
                 f"{api_key_env} is not set. Add it to your .env file."
             )
-        self.client = OpenAI(base_url=base_url, api_key=api_key)
+        self.client = OpenAI(base_url=base_url, api_key=api_key, max_retries=PROVIDER_MAX_RETRIES)
         self.extra_headers = extra_headers or {}
 
     def complete(self, model_id, prompt, system, max_tokens):
