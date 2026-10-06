@@ -61,3 +61,16 @@ def test_router_analysis_leave_one_category_out_counts():
         assert set(per_cat) == set(cats)
         for c, correct in per_cat.items():
             assert 0 <= correct <= (cats == c).sum()
+
+
+def test_cached_only_never_calls_the_model(monkeypatch):
+    """--cached-only must skip uncached references without spending a request."""
+    calls = []
+    monkeypatch.setattr(LLMClient, "complete", lambda self, *a, **k: calls.append(1))
+    cached = {"q1": result()}
+    monkeypatch.setattr(LLMClient, "cached",
+                        lambda self, spec, prompt, *a, **k: cached.get(prompt))
+    c = run_benchmark.RetryingClient(cache=object())
+    refs = run_benchmark.build_references(
+        c, [{"id": "a", "query": "q1"}, {"id": "b", "query": "q2"}], cached_only=True)
+    assert refs == {"a": "ok"} and calls == []

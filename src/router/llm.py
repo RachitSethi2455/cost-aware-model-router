@@ -23,6 +23,23 @@ class LLMClient:
     def __init__(self, cache: ResponseCache | None = None):
         self.cache = cache or ResponseCache()
 
+    @staticmethod
+    def _cache_key(spec: ModelSpec, prompt: str, system: str | None, max_tokens: int) -> str:
+        # Includes provider: the same model_id on two providers can return
+        # different text, and conflating them would poison the results.
+        return f"{spec.provider}||{system or ''}||{prompt}||{max_tokens}"
+
+    def cached(
+        self,
+        spec: ModelSpec,
+        prompt: str,
+        system: str | None = None,
+        max_tokens: int = MAX_TOKENS,
+    ) -> CallResult | None:
+        """The cached result for this call, or None. Never calls the provider."""
+        hit = self.cache.get(spec.model_id, self._cache_key(spec, prompt, system, max_tokens))
+        return CallResult(**{**hit, "cached": True}) if hit else None
+
     def complete(
         self,
         spec: ModelSpec,
@@ -30,12 +47,10 @@ class LLMClient:
         system: str | None = None,
         max_tokens: int = MAX_TOKENS,
     ) -> CallResult:
-        # Cache key includes provider: the same model_id on two providers can
-        # return different text, and conflating them would poison the results.
-        cache_key = f"{spec.provider}||{system or ''}||{prompt}||{max_tokens}"
-        hit = self.cache.get(spec.model_id, cache_key)
+        cache_key = self._cache_key(spec, prompt, system, max_tokens)
+        hit = self.cached(spec, prompt, system, max_tokens)
         if hit:
-            return CallResult(**{**hit, "cached": True})
+            return hit
 
         provider = get_provider(spec.provider)
 

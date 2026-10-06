@@ -29,7 +29,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 os.environ.setdefault("PROVIDER_MAX_RETRIES", "0")
 
 from judge import grade  # noqa: E402
-from router.config import LARGE, RESULTS_DIR  # noqa: E402
+from router.config import JUDGE, LARGE, PROVIDER_PRESET, RESULTS_DIR, SMALL  # noqa: E402
 from router.llm import LLMClient  # noqa: E402
 from router.pipeline import RouterPipeline  # noqa: E402
 from router.types import CallResult  # noqa: E402
@@ -92,16 +92,26 @@ def load_dataset(limit: int | None = None) -> list[dict]:
     return mixed[:limit]
 
 
-def build_references(client: LLMClient, rows: list[dict]) -> dict[str, str]:
+def build_references(
+    client: LLMClient, rows: list[dict], cached_only: bool = False
+) -> dict[str, str]:
     """Reference answers from the large model. Cached, so this costs once.
 
     Rows whose reference could not be produced are dropped: grading against
-    an empty reference would score every arm arbitrarily.
+    an empty reference would score every arm arbitrarily. With cached_only,
+    rows without a cached reference are dropped without calling the model,
+    so a run can finish when the large model's quota is gone.
     """
     refs = {}
     for i, row in enumerate(rows, 1):
         print(f"  reference {i}/{len(rows)} [{row['id']}]", end="\r", flush=True)
-        result = client.complete(LARGE, row["query"])
+        if cached_only:
+            result = client.cached(LARGE, row["query"])
+            if result is None:
+                print(f"\n  - skipping {row['id']}: no cached reference")
+                continue
+        else:
+            result = client.complete(LARGE, row["query"])
         if result.error or not result.text.strip():
             print(f"\n  ! dropping {row['id']}: no reference ({result.error or 'empty'})")
             continue
@@ -136,7 +146,10 @@ def run_arm(
             "score": verdict["score"],
             "judge_reason": verdict["reason"],
             "cost_usd": resp.total_cost_usd,
-            "latency_s": resp.total_latency_s,
+            # Model latency as originally measured: the cache stores each
+            # call's latency, while wall-clock time would read ~0 for every
+            # arm that reuses cached answers.
+            "latency_s": sum(c.latency_s for c in resp.calls),
             "n_calls": len(resp.calls),
             "failed": bool(resp.calls[-1].error),
         })
@@ -152,6 +165,10 @@ def run_arm(
 
     return {
         "arm": arm,
+        # Provenance, so any number quoted later can be traced to its models.
+        "provider_preset": PROVIDER_PRESET,
+        "models": {"small": SMALL.model_id, "large": LARGE.model_id, "judge": JUDGE.model_id},
+        "query_ids": [r["id"] for r in records],
         "escalation_enabled": enable_escalation,
         "n": n,
         "quality": round(statistics.mean(graded) / 2, 4) if graded else None,
@@ -182,14 +199,19 @@ def print_table(summaries: list[dict]) -> None:
         )
     print()
 
+    # Report every router against always-large, not just the classifier:
+    # on a small sample the baseline can win, and that must be visible.
     base = next((s for s in summaries if s["arm"] == "always_large"), None)
-    best = next((s for s in summaries if s["arm"] == "classifier"), None)
-    if (base and best and base["cost_per_100_usd"]
-            and base["quality"] is not None and best["quality"] is not None):
-        saving = 100 * (1 - best["cost_per_100_usd"] / base["cost_per_100_usd"])
-        retention = 100 * best["quality"] / base["quality"] if base["quality"] else 0
-        print(f"Headline: {saving:.0f}% cost reduction, {retention:.0f}% quality retention "
-              f"vs always-large.\n")
+    if not base or not base["cost_per_100_usd"] or not base["quality"]:
+        return
+    for s in summaries:
+        if s["arm"] not in ("heuristic", "classifier") or s["quality"] is None:
+            continue
+        saving = 100 * (1 - s["cost_per_100_usd"] / base["cost_per_100_usd"])
+        retention = 100 * s["quality"] / base["quality"]
+        print(f"{s['arm']:<11} vs always-large: {saving:.0f}% cost reduction, "
+              f"{retention:.0f}% quality retention (n={s['n']})")
+    print()
 
 
 def main() -> None:
@@ -197,6 +219,9 @@ def main() -> None:
     ap.add_argument("--arms", nargs="+", default=ARMS, choices=ARMS)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--no-escalation", action="store_true")
+    ap.add_argument("--cached-only", action="store_true",
+                    help="use only questions whose reference answer is already cached "
+                         "(no new large-model reference calls)")
     ap.add_argument("--tag", default="main", help="suffix for the results filename")
     args = ap.parse_args()
 
@@ -205,7 +230,7 @@ def main() -> None:
     print(f"Dataset: {len(rows)} queries ({', '.join(r['id'] for r in rows)})\n"
           "Building reference answers...")
     try:
-        refs = build_references(client, rows)
+        refs = build_references(client, rows, cached_only=args.cached_only)
         rows = [r for r in rows if r["id"] in refs]
 
         summaries = []

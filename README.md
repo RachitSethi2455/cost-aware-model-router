@@ -56,16 +56,44 @@ CI runs the full offline suite on every push.
 
 ## Results
 
-Run `python evals/run_benchmark.py` to populate. Four arms over the labeled
-eval set, all through identical pipeline code so the comparison isn't
-confounded:
+Four arms, all through identical pipeline code so the comparison isn't
+confounded. **First live run: 9 questions only**, on the `gemini-free` preset
+(small `gemini-3.1-flash-lite`, large `gemini-3.6-flash`, judge
+`gemini-3.5-flash`), 6 Oct 2026. The free tier's overload errors and daily
+quotas stopped the full 60-question run, so these 9 are the questions with a
+reference answer: 3 lookup/format, 1 reasoning, 2 complex, 3 adversarial.
+Raw results: [`results/benchmark_gemini_free_n9.json`](results/benchmark_gemini_free_n9.json).
 
 | Arm | Quality | $/100 req | p50 latency | % routed small |
 |---|---|---|---|---|
-| All small (Haiku 4.5) | _tbd_ | _tbd_ | _tbd_ | 100% |
-| All large (Opus 5) | 1.000 | _tbd_ | _tbd_ | 0% |
-| Heuristic router | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
-| Classifier router | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
+| All small | 0.889 | $0.078 | 4.2 s | 100% |
+| All large | 1.000 (reference) | $0.855 | 11.1 s | 0% |
+| Heuristic router | 0.944 | $0.152 | 4.4 s | 89% |
+| Classifier router | 0.944 | $0.409 | 4.4 s | 67% |
+
+Against always-large: the heuristic router cut cost **82%** and the classifier
+**52%**, both keeping **94%** of quality, at about 2.5x lower median latency.
+Costs are at paid-tier rates; latency is each model call as originally
+measured.
+
+What the 9 questions do and don't show:
+
+- **Routing pays even with a small price gap.** The large model's list price is
+  about 3x the small one's, but it cost 11x more per request because it writes
+  far more (hidden reasoning) tokens. Output volume drives cost more than the
+  price list does.
+- **The heuristic beat the classifier here,** by two questions: the classifier
+  sent two complex questions to the large model that the small model answered
+  fully. Nine questions can't separate the two routers; the offline evaluation
+  below (60 queries, unseen categories) is the better guide to routing
+  accuracy.
+- **The small model was already strong:** full marks on 7 of 9. The quality
+  gap between these two Gemini tiers is narrow, which caps how much routing
+  can save on quality.
+- **Escalation never fired.** On "List the countries that border exactly three
+  other countries" the small model returned a confident but incomplete list.
+  Structural checks (empty, refused, truncated, hedging) cannot see a wrong
+  answer that looks complete; this is limitation 5 observed live.
 
 **Router accuracy (offline, no API calls; `python evals/analyze_router.py`):**
 
