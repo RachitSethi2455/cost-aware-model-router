@@ -27,7 +27,7 @@ class FakePipeline:
         self.outcome = outcome
         self.threshold = 0.5
 
-    def run(self, query, system=None):
+    def run(self, query, system=None, threshold=None):
         if isinstance(self.outcome, Exception):
             raise self.outcome
         return self.outcome
@@ -187,3 +187,20 @@ def test_vercel_entrypoint_is_safe_and_self_training():
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
     assert out.stdout.split() == ["True", "True", "large"]
+
+
+def test_request_threshold_does_not_leak_into_later_requests(monkeypatch):
+    """Pipelines are shared across requests; a per-request threshold must not stick."""
+    from router.pipeline import RouterPipeline
+
+    class FakeLLM:
+        def complete(self, spec, prompt, system=None, max_tokens=None):
+            return call("Tokyo is the capital city of Japan.", spec.name)
+
+    pipe = RouterPipeline(mode="heuristic", client=FakeLLM())
+    monkeypatch.setattr(main, "get_pipeline", lambda mode: pipe)
+    c = TestClient(main.app)
+    q = {"query": "What is the capital of Japan?"}
+
+    assert c.post("/route", json={**q, "threshold": 0.0}).json()["tier_chosen"] == "large"
+    assert c.post("/route", json=q).json()["tier_chosen"] == "small"

@@ -126,3 +126,20 @@ class TestClassifierArtifact:
         assert router.trained is False
         tier, _ = router.route("What is the capital of Japan?")
         assert tier == "small"
+
+
+def test_response_cache_survives_concurrent_threads(tmp_path):
+    """The API shares one cache across its thread pool."""
+    from concurrent.futures import ThreadPoolExecutor
+    from router.cache import ResponseCache
+
+    cache = ResponseCache(tmp_path / "cache.sqlite")
+
+    def work(i):
+        cache.set("m", f"prompt {i}", {"text": str(i)})
+        return cache.get("m", f"prompt {i}")["text"]
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        results = list(pool.map(work, range(400)))
+    assert results == [str(i) for i in range(400)]
+    assert cache.stats() == {"m": 400}

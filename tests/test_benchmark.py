@@ -50,3 +50,14 @@ def test_daily_quota_stops_the_run(client):
 def test_limit_interleaves_categories():
     ids = [r["id"] for r in run_benchmark.load_dataset(8)]
     assert {i.rstrip("0123456789") for i in ids} == {"s", "m", "c", "a"}
+
+
+def test_router_analysis_leave_one_category_out_counts():
+    """Every query is tested exactly once across the held-out categories."""
+    import analyze_router
+    queries, y, cats = analyze_router.load()
+    loco = analyze_router.leave_one_category_out(queries, y, cats)
+    for name, per_cat in loco.items():
+        assert set(per_cat) == set(cats)
+        for c, correct in per_cat.items():
+            assert 0 <= correct <= (cats == c).sum()

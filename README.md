@@ -67,20 +67,52 @@ confounded:
 | Heuristic router | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
 | Classifier router | _tbd_ | _tbd_ | _tbd_ | _tbd_ |
 
-**Router accuracy (offline, no API calls):**
+**Router accuracy (offline, no API calls; `python evals/analyze_router.py`):**
 
-| Router | Accuracy vs labels |
-|---|---|
-| Majority class baseline | 55.0% |
-| Heuristic rules | 56.7% |
-| Logistic regression, 6 features | 75.7% ± 8.9% |
-| **Logistic regression, 7 features (current)** | **78.2% ± 9.7%** |
+| Model | Accuracy, random splits | Accuracy, unseen category | AUC | Brier (lower is better) |
+|---|---|---|---|---|
+| Majority class | 55.0% | 26.7% | 0.500 (no ranking) | 0.248 |
+| Heuristic rules | 56.7% | 56.7% | 0.811 | n/a (scores, not probabilities) |
+| TF-IDF + logistic regression (bag of words) | 79.8% ± 3.7 | 60.0% | 0.870 ± 0.018 | 0.219 ± 0.002 |
+| **Router: 7 features + logistic regression** | **78.2% ± 3.8** | **73.3%** | 0.833 ± 0.012 | **0.152 ± 0.011** |
 
-Classifier numbers are the mean of 20 reshuffled stratified 5-fold splits
-(`python evals/train_router.py`). An earlier version of this README quoted
-80.0% from a single 5-fold split; with 60 examples one split swings by
-several points depending on the seed, so the repeated-CV mean is the honest
-figure.
+*Random splits* are out-of-fold predictions from 20 reshuffled stratified
+5-fold splits (± is the spread across the 20 repeats). *Unseen category*
+trains on 12 of the 13 question categories and tests on the one left out.
+
+**Why hand-made features rather than bag-of-words.** On random splits the
+two are tied: similar phrasings land in both train and test, and TF-IDF
+ranks slightly better. Hold out a whole category and TF-IDF drops to 60%: it
+had learned each category's topic words rather than difficulty, and on unseen
+easy categories it collapses (lookups 1/9 correct, formatting 2/6,
+classification 1/4, against the router's 5/9, 6/6 and 4/4). The router's
+probabilities are also better calibrated (Brier 0.152 vs 0.219), which
+matters because it acts on a probability threshold. Both fail on the
+adversarial categories; see limitation 5.
+
+The rule-based heuristic ranks queries reasonably (AUC 0.81); its 56.7%
+accuracy comes from a badly placed cut-off rather than bad signals.
+
+**Threshold trade-off** (router, out-of-fold, mean over repeats):
+
+| Threshold | Routed to small | Hard queries sent to small | Easy queries sent to large |
+|---|---|---|---|
+| 0.3 | 33% | 13% | 42% |
+| 0.4 | 41% | 22% | 35% |
+| **0.5 (default)** | 51% | 26% | 17% |
+| 0.6 | 57% | 29% | 8% |
+| 0.7 | 61% | 32% | 4% |
+
+A hard query sent to the small model costs an escalation round trip if the
+quality checks catch the failure, and a weaker answer if they don't. An easy
+query sent to the large model only costs money. Which side to favour depends
+on how good escalation is in practice, which is what the live benchmark
+measures.
+
+An earlier version of this README quoted 80.0% from a single 5-fold split;
+with 60 examples one split swings by several points depending on the seed,
+so the repeated-CV mean is the honest figure. The 6-feature version of the
+router scored 75.7% on the same protocol.
 
 The seventh feature, `asks_for_code`, was added after live testing showed
 "Write a Python function to merge two sorted lists" routed to the small model:

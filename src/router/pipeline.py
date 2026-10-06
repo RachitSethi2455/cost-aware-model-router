@@ -52,18 +52,26 @@ class RouterPipeline:
         self.client = client or LLMClient()
         self._clf = ClassifierRouter() if mode == "classifier" else None
 
-    def _decide(self, query: str) -> tuple[str, float]:
+    def _decide(self, query: str, threshold: float | None = None) -> tuple[str, float]:
+        t = self.threshold if threshold is None else threshold
         if self.mode == "always_small":
             return "small", 0.0
         if self.mode == "always_large":
             return "large", 1.0
         if self.mode == "heuristic":
-            return heuristic.route(query, self.threshold)
-        return self._clf.route(query, self.threshold)
+            return heuristic.route(query, t)
+        return self._clf.route(query, t)
 
-    def run(self, query: str, system: str | None = None) -> RoutedResponse:
+    def run(
+        self, query: str, system: str | None = None, threshold: float | None = None
+    ) -> RoutedResponse:
+        """threshold overrides the pipeline default for this call only.
+
+        Pipelines are shared across API requests, so a per-request setting
+        must never be stored on self.
+        """
         started = time.perf_counter()
-        tier, confidence = self._decide(query)
+        tier, confidence = self._decide(query, threshold)
         spec = TIERS[tier]
 
         first = self.client.complete(spec, query, system=system)

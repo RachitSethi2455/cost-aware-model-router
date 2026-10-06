@@ -185,10 +185,8 @@ def route(req: RouteRequest) -> RouteResponse:
                    "or run the project locally with your own API key.",
         )
     pipe = get_pipeline(req.mode)
-    if req.threshold is not None:
-        pipe.threshold = req.threshold
     try:
-        result = pipe.run(req.query, system=req.system)
+        result = pipe.run(req.query, system=req.system, threshold=req.threshold)
     except RuntimeError as exc:
         # Raised while building a provider client, before any model call.
         # This is a configuration problem, not a server crash.

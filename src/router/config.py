@@ -78,14 +78,16 @@ PRESETS: dict[str, dict[str, ModelSpec]] = {
     },
     # gemini-2.0-flash is shut down and 2.5 models are limited to existing
     # users. All three models below have a free tier; the rates are paid-tier
-    # list prices (3.7/3.8 Flash rates are promotional through 2026-12-31).
+    # list prices (3.6/3.8 Flash rates are promotional through 2026-12-31).
     # The judge is deliberately a different model from the one writing the
     # references: models favour their own phrasing, and on the free tier each
     # model has its own daily request quota (20/day for gemini-3.8-flash).
+    # gemini-3.7-flash was the judge until it returned 503 "high demand" for
+    # days on end (Sep 30 - Oct 6, 2026).
     "gemini": {
         "small": ModelSpec("small", "gemini-3.1-flash-lite", 0.25, 1.50, "gemini"),
         "large": ModelSpec("large", "gemini-3.8-flash", 0.75, 3.75, "gemini"),
-        "judge": ModelSpec("judge", "gemini-3.7-flash", 0.75, 3.75, "gemini"),
+        "judge": ModelSpec("judge", "gemini-3.6-flash", 0.75, 3.75, "gemini"),
     },
     "groq": {
         "small": ModelSpec("small", "llama-3.1-8b-instant", 0.05, 0.08, "groq"),
