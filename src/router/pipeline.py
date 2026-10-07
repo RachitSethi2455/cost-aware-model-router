@@ -15,10 +15,11 @@ from typing import Literal
 
 from . import heuristic
 from .classifier import ClassifierRouter
-from .config import LARGE, ROUTE_THRESHOLD, TIERS
+from .config import ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, TIERS
 from .escalation import should_escalate
 from .features import extract
 from .llm import LLMClient
+from .risk import silent_failure_risks
 from .types import CallResult
 
 RouterMode = Literal["heuristic", "classifier", "always_small", "always_large"]
@@ -36,6 +37,8 @@ class RoutedResponse:
     total_latency_s: float
     calls: list[CallResult] = field(default_factory=list)
     features: dict = field(default_factory=dict)
+    # Risk rules that sent a would-be small query to the large model.
+    risk_override: list[str] = field(default_factory=list)
 
 
 class RouterPipeline:
@@ -45,10 +48,12 @@ class RouterPipeline:
         client: LLMClient | None = None,
         threshold: float = ROUTE_THRESHOLD,
         enable_escalation: bool = True,
+        enable_risk_rules: bool = ENABLE_RISK_RULES,
     ):
         self.mode = mode
         self.threshold = threshold
         self.enable_escalation = enable_escalation
+        self.enable_risk_rules = enable_risk_rules
         self.client = client or LLMClient()
         self._clf = ClassifierRouter() if mode == "classifier" else None
 
@@ -61,6 +66,20 @@ class RouterPipeline:
         if self.mode == "heuristic":
             return heuristic.route(query, t)
         return self._clf.route(query, t)
+
+    def route(self, query: str, threshold: float | None = None) -> tuple[str, float, list[str]]:
+        """(tier, router confidence, risk rules that overrode a small decision).
+
+        Escalation cannot see a fluent wrong answer, so question shapes the
+        small model fails silently (router/risk.py) skip it. Fixed-tier modes
+        are left alone so the benchmark baselines stay pure.
+        """
+        tier, confidence = self._decide(query, threshold)
+        if self.enable_risk_rules and self.mode in ("heuristic", "classifier") and tier == "small":
+            risks = silent_failure_risks(query)
+            if risks:
+                return "large", confidence, risks
+        return tier, confidence, []
 
     def run(
         self,
@@ -79,7 +98,7 @@ class RouterPipeline:
         latest user message) only; both model tiers see the full history.
         """
         started = time.perf_counter()
-        tier, confidence = self._decide(query, threshold)
+        tier, confidence, risks = self.route(query, threshold)
         spec = TIERS[tier]
         gen = {"system": system, "history": history}
         if max_tokens is not None:
@@ -112,4 +131,5 @@ class RouterPipeline:
             total_latency_s=time.perf_counter() - started,
             calls=calls,
             features=extract(query).to_dict(),
+            risk_override=risks,
         )

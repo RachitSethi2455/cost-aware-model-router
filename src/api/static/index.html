@@ -286,6 +286,13 @@
 
 <script>
 (() => {
+  const RISK_LABELS = {
+    exact_arithmetic: "exact arithmetic",
+    character_counting: "counting letters",
+    number_theory: "number check such as primality",
+    string_transform: "reversing text",
+    exhaustive_list: "complete list",
+  };
   const FEATURE_LABELS = {
     reasoning_marker_count: "Reasoning words",
     simple_marker_count: "Simple-task words",
@@ -326,10 +333,16 @@
     $("result").hidden = false;
     $("why").hidden = false;
     const large = r.tier === "large";
+    const rules = (r.overridden_by || []).map((n) => RISK_LABELS[n] || n);
+    const risks = (r.risk_rules || []).map((n) => RISK_LABELS[n] || n);
     $("tier").textContent = large ? "Large model" : "Small model";
-    $("tier-note").textContent = large
-      ? "Needs more capability. The router pays for the expensive model up front."
-      : "A cheap, fast model should handle this. If its answer fails the quality checks, it's retried on the large model.";
+    $("tier-note").textContent = rules.length
+      ? `Sent to the large model by a safety rule (${rules.join(", ")}). Small models often get questions like this wrong without any visible sign, so the router skips the small model whatever its probability below says.`
+      : risks.length && !large
+        ? `Flagged as a silent-failure risk (${risks.join(", ")}): small models often answer this kind of question wrongly but confidently. The safety rules that would send it to the large model are opt-in (ENABLE_RISK_RULES=1), because they cost more and their benefit is not yet measured.`
+        : large
+          ? "Needs more capability. The router pays for the expensive model up front."
+          : "A cheap, fast model should handle this. If its answer fails the quality checks, it's retried on the large model.";
 
     const p = r.confidence, t = r.threshold;
     $("prob").textContent = p.toFixed(2);
@@ -364,7 +377,7 @@
     }).join("");
     $("why-note").textContent =
       `Numbers are each signal's push in log-odds, added to a starting point of ${fmtSigned(r.contributions.intercept)}. ` +
-      "The router only sees surface signals, so short questions that are secretly hard (arithmetic, letter counting) are its known weak spot; escalation is the safety net.";
+      "The router only sees surface signals, so short questions that are secretly hard are its weak spot. Safety rules cover some shapes (arithmetic, counting letters, primality, reversing text, complete lists), but only in the wordings they were written for.";
   }
 
   form.addEventListener("submit", (e) => {

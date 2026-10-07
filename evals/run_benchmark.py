@@ -30,7 +30,14 @@ os.environ.setdefault("PROVIDER_MAX_RETRIES", "0")
 
 from judge import grade  # noqa: E402
 
-from router.config import JUDGE, LARGE, PROVIDER_PRESET, RESULTS_DIR, SMALL  # noqa: E402
+from router.config import (  # noqa: E402
+    ENABLE_RISK_RULES,
+    JUDGE,
+    LARGE,
+    PROVIDER_PRESET,
+    RESULTS_DIR,
+    SMALL,
+)
 from router.llm import LLMClient  # noqa: E402
 from router.pipeline import RouterPipeline  # noqa: E402
 from router.types import CallResult  # noqa: E402
@@ -127,8 +134,10 @@ def run_arm(
     refs: dict[str, str],
     client: LLMClient,
     enable_escalation: bool,
+    enable_risk_rules: bool = False,
 ) -> dict:
-    pipe = RouterPipeline(mode=arm, client=client, enable_escalation=enable_escalation)
+    pipe = RouterPipeline(mode=arm, client=client, enable_escalation=enable_escalation,
+                          enable_risk_rules=enable_risk_rules)
     records = []
 
     for i, row in enumerate(rows, 1):
@@ -152,6 +161,7 @@ def run_arm(
             # arm that reuses cached answers.
             "latency_s": sum(c.latency_s for c in resp.calls),
             "n_calls": len(resp.calls),
+            "risk_override": resp.risk_override,
             "failed": bool(resp.calls[-1].error),
         })
     print()
@@ -171,6 +181,7 @@ def run_arm(
         "models": {"small": SMALL.model_id, "large": LARGE.model_id, "judge": JUDGE.model_id},
         "query_ids": [r["id"] for r in records],
         "escalation_enabled": enable_escalation,
+        "risk_rules_enabled": enable_risk_rules,
         "n": n,
         "quality": round(statistics.mean(graded) / 2, 4) if graded else None,
         "judge_errors": n - len(graded),
@@ -220,6 +231,9 @@ def main() -> None:
     ap.add_argument("--arms", nargs="+", default=ARMS, choices=ARMS)
     ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--no-escalation", action="store_true")
+    ap.add_argument("--risk-rules", action="store_true", default=ENABLE_RISK_RULES,
+                    help="let the silent-failure risk rules override routing "
+                         "(default: ENABLE_RISK_RULES, off)")
     ap.add_argument("--cached-only", action="store_true",
                     help="use only questions whose reference answer is already cached "
                          "(no new large-model reference calls)")
@@ -236,7 +250,8 @@ def main() -> None:
 
         summaries = []
         for arm in args.arms:
-            summaries.append(run_arm(arm, rows, refs, client, not args.no_escalation))
+            summaries.append(run_arm(arm, rows, refs, client, not args.no_escalation,
+                                     args.risk_rules))
     except DailyQuotaExhausted as exc:
         # No partial results file: a table built from some arms and not
         # others would invite exactly the comparison the benchmark prevents.

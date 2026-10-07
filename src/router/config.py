@@ -139,6 +139,16 @@ TIERS = {"small": SMALL, "large": LARGE}
 # a 20-requests/day free tier one overloaded query could burn 12 of them.
 PROVIDER_MAX_RETRIES = int(os.getenv("PROVIDER_MAX_RETRIES", "2"))
 
+# Send question shapes the small model fails without any visible sign
+# (exact arithmetic, letter counting, primality, ...) straight to LARGE.
+# Off by default: on held-out questions the small model got 55% of these
+# wrong, but sending them to the large model cut the routers' measured
+# savings sharply (76% -> 50%, 36% -> 9% on the live set), and whether the
+# large model answers them correctly is not yet measured. The rules always
+# *report* risks (/explain "risk_rules"); this flag makes them change routing.
+# See router/risk.py and evals/exact_answer_eval.py.
+ENABLE_RISK_RULES = os.getenv("ENABLE_RISK_RULES", "0") == "1"
+
 # Router decision threshold. P(complex) above this routes to LARGE.
 ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 

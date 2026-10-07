@@ -223,6 +223,68 @@ Written up deliberately — these are the interesting parts.
    Arithmetic, letter-counting, and one-word ambiguous prompts look trivial by
    every surface feature but need the large model. Surface features cannot fix
    this; it needs either a semantic signal or an accepted escalation cost.
+   The next section measures how often the small model fails these silently,
+   and what a rule-based fix does and doesn't catch.
+
+## Silent failures: measured, partly addressed
+
+Escalation can only see an answer that *looks* broken. For exact-answer
+questions a small model answers fluently and confidently whether it is right
+or wrong, so no structural check can tell. Two pieces address this:
+
+- **`router/risk.py`:** five readable rules that recognise silent-failure
+  question shapes: exact arithmetic, counting letters, number checks such as
+  primality, reversing text, and open-world "list all X that..." questions.
+  They were written after seeing four adversarial questions in the eval set.
+- **`evals/exact_answer_eval.py`:** a held-out test the rules were not written
+  against. Questions are generated from a fixed seed in shapes where Python
+  computes the right answer, so correctness is checked by code, not by a judge
+  model. Each shape is asked in its usual wording and in a paraphrase, plus one
+  shape no rule targets (digit sums) and 16 harmless look-alike questions.
+
+**Held-out results** (40 questions, seed 11, small `gemini-3.1-flash-lite`;
+[`results/exact_answer_eval_seed11.json`](results/exact_answer_eval_seed11.json)):
+
+| | |
+|---|---|
+| Small model wrong | **22 of 40 (55%)**, every one stated confidently |
+| Rules flag the usual wording | 16 of 16 (the four covered shapes) |
+| Rules flag a paraphrase | **0 of 20** |
+| Failures caught by the rules | 8 of 22 |
+| False alarms (27 easy eval-set queries + 16 look-alikes) | **0 of 43** |
+
+The rules are precise but brittle: they never fire on a harmless question, and
+they never recognise a rephrasing ("Multiply 407 by 62, subtract..." instead
+of "407 * 62 - ..."). Pattern rules match wordings, not intent.
+
+**What they cost on the live set.** Re-running the 14-question benchmark with
+the rules on (from cache, no new API calls;
+[`results/benchmark_gemini_free16_rules.json`](results/benchmark_gemini_free16_rules.json))
+sends three questions (arithmetic, primality, an exhaustive list) to the
+large model:
+
+| Router | Rules off | Rules on |
+|---|---|---|
+| Heuristic | 93% quality, 76% cheaper | 96% quality, 50% cheaper |
+| Classifier | 96% quality, 36% cheaper | 100% quality, 9% cheaper |
+
+The cost is real: the large model reasons at length on exactly these
+questions. The quality gain is partly by construction, since quality is scored
+against the large model's own answer, and on two of the three questions the
+small model had already matched it.
+
+**Decision: the rules are opt-in** (`ENABLE_RISK_RULES=1`). They always
+*report* a risk (`/explain` returns `risk_rules`, and the demo page shows it),
+but only change routing when enabled. The missing measurement is whether the
+large model answers the flagged questions correctly: the free tier's quota
+allowed one check (correct). If it holds up, enabling the rules is a
+quality-first setting worth its cost.
+
+**The better fix is probably not a bigger model.** For arithmetic, counting,
+primality and string reversal, a tool (run the calculation in code) gives a
+verifiably right answer for almost nothing; a larger model only makes a right
+answer more likely. The rules already identify these questions, which makes
+them the natural trigger for a tool call.
 
 ## Lessons from live testing
 
@@ -439,9 +501,9 @@ Delete `data/response_cache.sqlite` to force fresh calls.
 ## Project layout
 
 ```
-src/router/     config, features, heuristic, classifier, escalation, pipeline, llm, cache, types
+src/router/     config, features, heuristic, classifier, escalation, risk, pipeline, llm, cache, types
 src/api/        FastAPI service + demo page (static/)
-evals/          dataset.jsonl, judge, benchmark runner, router training
+evals/          dataset.jsonl, judge, benchmark runner, router training, analysis, exact-answer eval
 tests/          offline unit tests
 scripts/        chart generation
 ```

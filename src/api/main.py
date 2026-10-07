@@ -36,9 +36,10 @@ from pydantic import BaseModel, Field
 
 from router import heuristic
 from router.classifier import ClassifierRouter
-from router.config import LARGE, ROUTE_THRESHOLD, SMALL
+from router.config import ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, SMALL
 from router.features import extract
 from router.pipeline import RoutedResponse, RouterMode, RouterPipeline
+from router.risk import silent_failure_risks
 
 # Read after the router imports so values from .env are already loaded.
 # A public deployment must not let strangers spend the owner's API key.
@@ -130,6 +131,8 @@ class RouteResponse(BaseModel):
     # The served answer hit the token ceiling. Only a large-model answer can
     # be returned truncated; a truncated small answer is escalated instead.
     truncated: bool
+    # Risk rules that sent a would-be small query to the large model.
+    risk_override: list[str] = []
 
 
 @app.get("/", include_in_schema=False)
@@ -164,6 +167,13 @@ def explain(req: RouteRequest, request: Request) -> dict:
     else:
         tier, confidence = clf.route(req.query, threshold)
 
+    # Same override as RouterPipeline.route: shapes the small model fails
+    # silently skip it, whatever the router's probability says.
+    risks = silent_failure_risks(req.query)
+    overridden_by = []
+    if ENABLE_RISK_RULES and req.mode in ("heuristic", "classifier") and tier == "small" and risks:
+        tier, overridden_by = "large", risks
+
     # Which router actually decided: the classifier falls back to the
     # heuristic when no trained artifact is loaded.
     decided_by = req.mode
@@ -178,6 +188,8 @@ def explain(req: RouteRequest, request: Request) -> dict:
         "mode": req.mode,
         "router": decided_by,
         "contributions": clf.contributions(req.query) if req.mode == "classifier" else None,
+        "risk_rules": risks,
+        "overridden_by": overridden_by,
     }
 
 
@@ -247,6 +259,7 @@ def route(req: RouteRequest) -> RouteResponse:
         latency_s=round(result.total_latency_s, 3),
         n_calls=len(result.calls),
         truncated=final.stop_reason == "max_tokens",
+        risk_override=result.risk_override,
     )
 
 
@@ -366,6 +379,7 @@ def chat_completions(req: ChatRequest):
             "escalation_reason": result.escalation_reason,
             "confidence": round(result.router_confidence, 4),
             "cost_usd": round(result.total_cost_usd, 6),
+            "risk_override": result.risk_override,
         },
     }
 

@@ -1,0 +1,521 @@
+{
+  "preset": "gemini-free",
+  "small": "gemini-3.1-flash-lite",
+  "large": "gemini-3.6-flash",
+  "seed": 11,
+  "questions": [
+    {
+      "id": "arithmetic-c1",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 486 * 83 - 4267 / 17 + 449? Reply with just the number.",
+      "expected": 40536,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "40516",
+      "large": true,
+      "large_reply": "40536"
+    },
+    {
+      "id": "letter_count-c1",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'r' appear in the word 'strawberry'? Reply with just the number.",
+      "expected": 3,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "3",
+      "large": null
+    },
+    {
+      "id": "primality-c1",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 5647 a prime number? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": false,
+      "small_reply": "No.",
+      "large": null
+    },
+    {
+      "id": "digit_sum-c1",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 9575087281957? Reply with just the number.",
+      "expected": 73,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "83",
+      "large": null
+    },
+    {
+      "id": "reversal-c1",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'occurrence'. Reply with just the reversed word.",
+      "expected": "ecnerrucco",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": true,
+      "small_reply": "ecnerrucco",
+      "large": null
+    },
+    {
+      "id": "arithmetic-c2",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 934 * 93 - 3765 / 15 + 32? Reply with just the number.",
+      "expected": 86643,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "86637",
+      "large": null
+    },
+    {
+      "id": "letter_count-c2",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'c' appear in the word 'accommodate'? Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "2",
+      "large": null
+    },
+    {
+      "id": "primality-c2",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 18011 a prime number? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": true,
+      "small_reply": "No.",
+      "large": null
+    },
+    {
+      "id": "digit_sum-c2",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 8893061426292? Reply with just the number.",
+      "expected": 60,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "66",
+      "large": null
+    },
+    {
+      "id": "reversal-c2",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'nevertheless'. Reply with just the reversed word.",
+      "expected": "sselehtreven",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": false,
+      "small_reply": "sseltehtreven",
+      "large": null
+    },
+    {
+      "id": "arithmetic-c3",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 701 * 22 - 2508 / 11 + 245? Reply with just the number.",
+      "expected": 15439,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "15494",
+      "large": null
+    },
+    {
+      "id": "letter_count-c3",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'r' appear in the word 'strawberry'? Reply with just the number.",
+      "expected": 3,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "3",
+      "large": null
+    },
+    {
+      "id": "primality-c3",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 9323 a prime number? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": false,
+      "small_reply": "No.",
+      "large": null
+    },
+    {
+      "id": "digit_sum-c3",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 9120417729126? Reply with just the number.",
+      "expected": 51,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "55",
+      "large": null
+    },
+    {
+      "id": "reversal-c3",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'parallelogram'. Reply with just the reversed word.",
+      "expected": "margolellarap",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": false,
+      "small_reply": "margollelarap",
+      "large": null
+    },
+    {
+      "id": "arithmetic-c4",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 53 * 20 - 1350 / 6 + 299? Reply with just the number.",
+      "expected": 1134,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "1174",
+      "large": null
+    },
+    {
+      "id": "letter_count-c4",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'p' appear in the word 'mississippi'? Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "2",
+      "large": null
+    },
+    {
+      "id": "primality-c4",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 7997 a prime number? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": true,
+      "small_reply": "No.",
+      "large": null
+    },
+    {
+      "id": "digit_sum-c4",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 1023032589535? Reply with just the number.",
+      "expected": 46,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "46",
+      "large": null
+    },
+    {
+      "id": "reversal-c4",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'possession'. Reply with just the reversed word.",
+      "expected": "noissessop",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": true,
+      "small_reply": "noissessop",
+      "large": null
+    },
+    {
+      "id": "arithmetic-p5",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 407 by 62, subtract the result of dividing 605 by 5, then add 225. What do you get? Reply with just the number.",
+      "expected": 25338,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "25353",
+      "large": null
+    },
+    {
+      "id": "letter_count-p5",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 'r' occurs in 'occurrence'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "2",
+      "large": null
+    },
+    {
+      "id": "primality-p5",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 14437 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "Yes",
+      "large": null
+    },
+    {
+      "id": "digit_sum-p5",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 2467033750513. Reply with just the number.",
+      "expected": 46,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "46",
+      "large": null
+    },
+    {
+      "id": "reversal-p5",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'onomatopoeia' backwards. Reply with just the result.",
+      "expected": "aieopotamono",
+      "kind": "text",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "aiepoetamono",
+      "large": null
+    },
+    {
+      "id": "arithmetic-p6",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 746 by 24, subtract the result of dividing 1032 by 4, then add 16. What do you get? Reply with just the number.",
+      "expected": 17662,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "17678",
+      "large": null
+    },
+    {
+      "id": "letter_count-p6",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 'e' occurs in 'occurrence'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "3",
+      "large": null
+    },
+    {
+      "id": "primality-p6",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 19327 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "Yes",
+      "large": null
+    },
+    {
+      "id": "digit_sum-p6",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 7969189195698. Reply with just the number.",
+      "expected": 87,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "85",
+      "large": null
+    },
+    {
+      "id": "reversal-p6",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'strawberry' backwards. Reply with just the result.",
+      "expected": "yrrebwarts",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "yrrebwarts",
+      "large": null
+    },
+    {
+      "id": "arithmetic-p7",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 218 by 28, subtract the result of dividing 1185 by 15, then add 225. What do you get? Reply with just the number.",
+      "expected": 6250,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "6296",
+      "large": null
+    },
+    {
+      "id": "letter_count-p7",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 'm' occurs in 'committee'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "2",
+      "large": null
+    },
+    {
+      "id": "primality-p7",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 6991 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "Yes",
+      "large": null
+    },
+    {
+      "id": "digit_sum-p7",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 2812818360020. Reply with just the number.",
+      "expected": 41,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "42",
+      "large": null
+    },
+    {
+      "id": "reversal-p7",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'parallelogram' backwards. Reply with just the result.",
+      "expected": "margolellarap",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "margolellarap",
+      "large": null
+    },
+    {
+      "id": "arithmetic-p8",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 953 by 41, subtract the result of dividing 1170 by 10, then add 429. What do you get? Reply with just the number.",
+      "expected": 39385,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "39486",
+      "large": null
+    },
+    {
+      "id": "letter_count-p8",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 'o' occurs in 'bookkeeper'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "2",
+      "large": null
+    },
+    {
+      "id": "primality-p8",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 4403 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "Yes",
+      "large": null
+    },
+    {
+      "id": "digit_sum-p8",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 779073187219. Reply with just the number.",
+      "expected": 61,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "66",
+      "large": null
+    },
+    {
+      "id": "reversal-p8",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'strawberry' backwards. Reply with just the result.",
+      "expected": "yrrebwarts",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "yrrebwarts",
+      "large": null
+    }
+  ]
+}

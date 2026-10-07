@@ -28,12 +28,13 @@ src/router/features.py     7 interpretable features (no embeddings — too costl
 src/router/heuristic.py    rule baseline
 src/router/classifier.py   logistic regression + heuristic fallback
 src/router/escalation.py   deterministic guards on small-model output
+src/router/risk.py         silent-failure question shapes (opt-in routing override)
 src/router/pipeline.py     orchestration; 4 modes for the benchmark arms
 src/router/llm.py          caching + cost accounting
 src/router/providers/      vendor adapters behind a Protocol
 src/api/main.py            FastAPI (PUBLIC_DEMO disables /route)
 src/api/static/            demo page + recorded examples.json
-evals/                     dataset.jsonl, judge, benchmark, training
+evals/                     dataset.jsonl, judge, benchmark, training, analysis, exact-answer eval
 ```
 
 ## Commands
