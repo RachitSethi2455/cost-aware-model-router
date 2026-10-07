@@ -15,11 +15,12 @@ from typing import Literal
 
 from . import heuristic
 from .classifier import ClassifierRouter
-from .config import ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, TIERS
+from .config import ENABLE_CODE_TOOL, ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, SMALL, TIERS
 from .escalation import should_escalate
 from .features import extract
 from .llm import LLMClient
 from .risk import silent_failure_risks
+from .tools import looks_computable, solve_with_code
 from .types import CallResult
 
 RouterMode = Literal["heuristic", "classifier", "always_small", "always_large"]
@@ -39,6 +40,8 @@ class RoutedResponse:
     features: dict = field(default_factory=dict)
     # Risk rules that sent a would-be small query to the large model.
     risk_override: list[str] = field(default_factory=list)
+    # Set when the answer was computed by code: {"expression", "answer"}.
+    tool: dict | None = None
 
 
 class RouterPipeline:
@@ -49,11 +52,13 @@ class RouterPipeline:
         threshold: float = ROUTE_THRESHOLD,
         enable_escalation: bool = True,
         enable_risk_rules: bool = ENABLE_RISK_RULES,
+        enable_code_tool: bool = ENABLE_CODE_TOOL,
     ):
         self.mode = mode
         self.threshold = threshold
         self.enable_escalation = enable_escalation
         self.enable_risk_rules = enable_risk_rules
+        self.enable_code_tool = enable_code_tool
         self.client = client or LLMClient()
         self._clf = ClassifierRouter() if mode == "classifier" else None
 
@@ -98,6 +103,33 @@ class RouterPipeline:
         latest user message) only; both model tiers see the full history.
         """
         started = time.perf_counter()
+
+        # Exact-answer questions: let the small model write an expression and
+        # compute it (router/tools.py). Single-turn only, so earlier context
+        # can't be lost. Anything but a computed answer falls through to
+        # normal routing; the extra call still counts toward cost.
+        tool_calls: list[CallResult] = []
+        if (self.enable_code_tool and self.mode in ("heuristic", "classifier")
+                and not history and looks_computable(query)):
+            code = solve_with_code(self.client, SMALL, query)
+            if code.call is not None:
+                tool_calls.append(code.call)
+            if code.status == "answered":
+                _, confidence = self._decide(query, threshold)
+                return RoutedResponse(
+                    answer=code.answer,
+                    tier_chosen="small",
+                    tier_served="small",
+                    escalated=False,
+                    escalation_reason=None,
+                    router_confidence=confidence,
+                    total_cost_usd=sum(c.cost_usd for c in tool_calls),
+                    total_latency_s=time.perf_counter() - started,
+                    calls=tool_calls,
+                    features=extract(query).to_dict(),
+                    tool={"expression": code.expression, "answer": code.answer},
+                )
+
         tier, confidence, risks = self.route(query, threshold)
         spec = TIERS[tier]
         gen = {"system": system, "history": history}
@@ -105,7 +137,7 @@ class RouterPipeline:
             gen["max_tokens"] = max_tokens
 
         first = self.client.complete(spec, query, **gen)
-        calls = [first]
+        calls = [*tool_calls, first]
         escalated = False
         reason = None
         final = first

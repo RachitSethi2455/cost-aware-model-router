@@ -273,6 +273,7 @@
     <h2 id="how-h">How it works</h2>
     <div class="card">
       <ol class="how">
+        <li><strong>Compute exact answers.</strong> For calculations (arithmetic, counting letters, primality, reversing text) the small model writes one Python expression and a locked-down evaluator computes it. On held-out questions this took the small model from 53% to 95% correct.</li>
         <li><strong>Read the question.</strong> Seven cheap, readable signals: reasoning words, simple-task words, whether it asks for or contains code, length, and listed constraints. No embeddings: an embedding call would cost as much as the routing saves.</li>
         <li><strong>Decide.</strong> A logistic regression turns those signals into a probability. At 0.50 or above, the question goes to the large model. It agrees with hand labels 78% of the time (mean of 20 repeated 5-fold splits), against 55% for always guessing the common answer.</li>
         <li><strong>Check the cheap answer.</strong> Deterministic checks, not a second AI call: empty, refused, cut off, hedging, or missing code that was asked for.</li>
@@ -335,9 +336,14 @@
     const large = r.tier === "large";
     const rules = (r.overridden_by || []).map((n) => RISK_LABELS[n] || n);
     const risks = (r.risk_rules || []).map((n) => RISK_LABELS[n] || n);
-    $("tier").textContent = large ? "Large model" : "Small model";
-    $("tier-note").textContent = rules.length
-      ? `Sent to the large model by a safety rule (${rules.join(", ")}). Small models often get questions like this wrong without any visible sign, so the router skips the small model whatever its probability below says.`
+    // The code tool runs before routing, so a computable question is answered
+    // by the small model plus a sandboxed calculation, whatever the tier says.
+    $("tier").textContent = r.computable ? "Small model + calculator"
+      : large ? "Large model" : "Small model";
+    $("tier-note").textContent = r.computable
+      ? "Looks like a calculation, so the router asks the small model to write it as code and computes the answer exactly in a sandbox. If no computation comes back, it routes normally."
+      : rules.length
+        ? `Sent to the large model by a safety rule (${rules.join(", ")}). Small models often get questions like this wrong without any visible sign, so the router skips the small model whatever its probability below says.`
       : risks.length && !large
         ? `Flagged as a silent-failure risk (${risks.join(", ")}): small models often answer this kind of question wrongly but confidently. The safety rules that would send it to the large model are opt-in (ENABLE_RISK_RULES=1), because they cost more and their benefit is not yet measured.`
         : large

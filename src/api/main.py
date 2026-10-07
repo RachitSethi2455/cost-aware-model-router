@@ -40,6 +40,7 @@ from router.config import ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, SMALL
 from router.features import extract
 from router.pipeline import RoutedResponse, RouterMode, RouterPipeline
 from router.risk import silent_failure_risks
+from router.tools import looks_computable
 
 # Read after the router imports so values from .env are already loaded.
 # A public deployment must not let strangers spend the owner's API key.
@@ -133,6 +134,8 @@ class RouteResponse(BaseModel):
     truncated: bool
     # Risk rules that sent a would-be small query to the large model.
     risk_override: list[str] = []
+    # Set when the answer was computed by code: {"expression", "answer"}.
+    tool: dict | None = None
 
 
 @app.get("/", include_in_schema=False)
@@ -190,6 +193,8 @@ def explain(req: RouteRequest, request: Request) -> dict:
         "contributions": clf.contributions(req.query) if req.mode == "classifier" else None,
         "risk_rules": risks,
         "overridden_by": overridden_by,
+        # Whether /route would try the code tool (ENABLE_CODE_TOOL) first.
+        "computable": looks_computable(req.query),
     }
 
 
@@ -260,6 +265,7 @@ def route(req: RouteRequest) -> RouteResponse:
         n_calls=len(result.calls),
         truncated=final.stop_reason == "max_tokens",
         risk_override=result.risk_override,
+        tool=result.tool,
     )
 
 
@@ -380,6 +386,7 @@ def chat_completions(req: ChatRequest):
             "confidence": round(result.router_confidence, 4),
             "cost_usd": round(result.total_cost_usd, 6),
             "risk_override": result.risk_override,
+            "tool": result.tool,
         },
     }
 

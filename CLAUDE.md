@@ -29,6 +29,7 @@ src/router/heuristic.py    rule baseline
 src/router/classifier.py   logistic regression + heuristic fallback
 src/router/escalation.py   deterministic guards on small-model output
 src/router/risk.py         silent-failure question shapes (opt-in routing override)
+src/router/tools.py        code tool: sandboxed expression evaluator + trigger (on by default)
 src/router/pipeline.py     orchestration; 4 modes for the benchmark arms
 src/router/llm.py          caching + cost accounting
 src/router/providers/      vendor adapters behind a Protocol

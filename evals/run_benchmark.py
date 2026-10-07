@@ -31,6 +31,7 @@ os.environ.setdefault("PROVIDER_MAX_RETRIES", "0")
 from judge import grade  # noqa: E402
 
 from router.config import (  # noqa: E402
+    ENABLE_CODE_TOOL,
     ENABLE_RISK_RULES,
     JUDGE,
     LARGE,
@@ -135,9 +136,11 @@ def run_arm(
     client: LLMClient,
     enable_escalation: bool,
     enable_risk_rules: bool = False,
+    enable_code_tool: bool = False,
 ) -> dict:
     pipe = RouterPipeline(mode=arm, client=client, enable_escalation=enable_escalation,
-                          enable_risk_rules=enable_risk_rules)
+                          enable_risk_rules=enable_risk_rules,
+                          enable_code_tool=enable_code_tool)
     records = []
 
     for i, row in enumerate(rows, 1):
@@ -162,6 +165,7 @@ def run_arm(
             "latency_s": sum(c.latency_s for c in resp.calls),
             "n_calls": len(resp.calls),
             "risk_override": resp.risk_override,
+            "tool": resp.tool,
             "failed": bool(resp.calls[-1].error),
         })
     print()
@@ -182,6 +186,7 @@ def run_arm(
         "query_ids": [r["id"] for r in records],
         "escalation_enabled": enable_escalation,
         "risk_rules_enabled": enable_risk_rules,
+        "code_tool_enabled": enable_code_tool,
         "n": n,
         "quality": round(statistics.mean(graded) / 2, 4) if graded else None,
         "judge_errors": n - len(graded),
@@ -234,6 +239,9 @@ def main() -> None:
     ap.add_argument("--risk-rules", action="store_true", default=ENABLE_RISK_RULES,
                     help="let the silent-failure risk rules override routing "
                          "(default: ENABLE_RISK_RULES, off)")
+    ap.add_argument("--code-tool", action="store_true", default=ENABLE_CODE_TOOL,
+                    help="answer exact-answer questions by computed expression "
+                         "(default: ENABLE_CODE_TOOL)")
     ap.add_argument("--cached-only", action="store_true",
                     help="use only questions whose reference answer is already cached "
                          "(no new large-model reference calls)")
@@ -251,7 +259,7 @@ def main() -> None:
         summaries = []
         for arm in args.arms:
             summaries.append(run_arm(arm, rows, refs, client, not args.no_escalation,
-                                     args.risk_rules))
+                                     args.risk_rules, args.code_tool))
     except DailyQuotaExhausted as exc:
         # No partial results file: a table built from some arms and not
         # others would invite exactly the comparison the benchmark prevents.

@@ -40,6 +40,7 @@ from run_benchmark import DailyQuotaExhausted, RetryingClient
 
 from router.config import LARGE, PROVIDER_PRESET, RESULTS_DIR, SMALL
 from router.risk import silent_failure_risks
+from router.tools import looks_computable, solve_with_code
 
 DATASET = Path(__file__).parent / "dataset.jsonl"
 WORDS = ["nevertheless", "mississippi", "bookkeeper", "onomatopoeia", "parallelogram",
@@ -152,7 +153,11 @@ def is_correct(reply: str, expected, kind: str) -> bool:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--tiers", nargs="+", default=["small", "large"], choices=["small", "large"])
+    ap.add_argument("--tiers", nargs="+", default=["small", "large"],
+                    choices=["small", "large", "code"],
+                    help="code = small model writes an expression, safe_eval computes it")
+    ap.add_argument("--code-harmless", action="store_true",
+                    help="also run the code path on the 43 harmless questions")
     # Seed 7 was used while developing this script (and exposed a paraphrase
     # that was easier than its canonical form); reported numbers use seed 11.
     ap.add_argument("--seed", type=int, default=11)
@@ -172,6 +177,18 @@ def main() -> None:
     for q in questions:
         q["flagged_by"] = silent_failure_risks(q["query"])
         for tier in args.tiers:
+            if tier == "code":
+                try:
+                    res = solve_with_code(client, SMALL, q["query"], cached_only=args.cached_only)
+                except DailyQuotaExhausted as exc:
+                    print(f"  ! {exc}")
+                    q["code"] = None
+                    continue
+                q["code_status"], q["code_expression"] = res.status, res.expression
+                q["code"] = (is_correct(res.answer, q["expected"], q["kind"])
+                             if res.status == "answered" else
+                             None if res.status == "failed" else False)
+                continue
             spec = specs[tier]
             if tier == "large" and args.large_only_flagged and not q["flagged_by"]:
                 q[tier] = None
@@ -195,13 +212,14 @@ def main() -> None:
         xs = [x for x in xs if x is not None]
         return f"{sum(xs)}/{len(xs)}" if xs else "-"
 
-    print(f"{'type':<14}{'wording':<12}{'flagged':>9}{'small ok':>10}{'large ok':>10}")
+    print(f"{'type':<14}{'wording':<12}{'flagged':>9}{'small ok':>10}{'large ok':>10}{'code ok':>10}")
     groups = defaultdict(list)
     for q in questions:
         groups[(q["type"], q["wording"])].append(q)
     for (qtype, wording), qs in groups.items():
         print(f"{qtype:<14}{wording:<12}{rate([bool(q['flagged_by']) for q in qs]):>9}"
-              f"{rate([q.get('small') for q in qs]):>10}{rate([q.get('large') for q in qs]):>10}")
+              f"{rate([q.get('small') for q in qs]):>10}{rate([q.get('large') for q in qs]):>10}"
+              f"{rate([q.get('code') for q in qs]):>10}")
 
     wrong_small = [q for q in questions if q.get("small") is False]
     caught = [q for q in wrong_small if q["flagged_by"]]
@@ -221,6 +239,25 @@ def main() -> None:
               f"large only {rate([q['large'] for q in both])}, "
               f"small + risk rules {sum(routed)}/{len(both)}")
 
+    with_code = [q for q in questions if q.get("small") is not None and q.get("code") is not None]
+    if with_code:
+        statuses = defaultdict(int)
+        for q in with_code:
+            statuses[q["code_status"]] += 1
+        print(f"Small model answering directly vs writing code (n={len(with_code)}): "
+              f"{rate([q['small'] for q in with_code])} vs {rate([q['code'] for q in with_code])}  "
+              f"[code path: {dict(statuses)}]")
+        for wording in ("canonical", "paraphrase"):
+            sub = [q for q in with_code if q["wording"] == wording]
+            print(f"  {wording:<11} direct {rate([q['small'] for q in sub])}, "
+                  f"code {rate([q['code'] for q in sub])}")
+        # What the router does: code path when the trigger fires and code
+        # produces an answer, otherwise the small model's direct answer.
+        policy = [q["code"] if looks_computable(q["query"]) and q["code_status"] == "answered"
+                  else q["small"] for q in with_code]
+        print(f"Router policy (code when triggered and answered, else direct): "
+              f"{sum(policy)}/{len(policy)}")
+
     small_prior = [json.loads(line)["query"] for line in DATASET.read_text(encoding="utf-8").splitlines()
                    if line.strip() and json.loads(line)["prior"] == "small"]
     for name, items in (("eval-set small-prior queries", small_prior), ("look-alike questions", LOOKALIKES)):
@@ -228,11 +265,35 @@ def main() -> None:
         print(f"False alarms on {name}: {len(flagged)}/{len(items)}"
               + "".join(f"\n    {rules} {x}" for x, rules in flagged))
 
+    harmless_runs = []
+    if args.code_harmless:
+        print()
+        print("Code path on harmless questions (should decline or stay harmless):")
+        for x in small_prior + LOOKALIKES:
+            try:
+                res = solve_with_code(client, SMALL, x, cached_only=args.cached_only)
+            except DailyQuotaExhausted as exc:
+                print(f"  ! {exc}")
+                break
+            harmless_runs.append({"query": x, "status": res.status, "triggered": looks_computable(x),
+                                  "expression": res.expression, "answer": res.answer})
+        for label, runs in (("forced on all", harmless_runs),
+                            ("where the trigger fires", [h for h in harmless_runs if h["triggered"]])):
+            counts = defaultdict(int)
+            for h in runs:
+                counts[h["status"]] += 1
+            print(f"  {label}: {dict(counts)} of {len(runs)}")
+        for h in harmless_runs:
+            if h["status"] == "answered":
+                mark = "TRIGGERED " if h["triggered"] else ""
+                print(f"    {mark}answered {h['answer']!r:<12} via {h['expression']!r:<40} | {h['query'][:60]}")
+
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     out = RESULTS_DIR / f"exact_answer_eval_seed{args.seed}.json"
     out.write_text(json.dumps({"preset": PROVIDER_PRESET, "small": SMALL.model_id,
                                "large": LARGE.model_id, "seed": args.seed,
-                               "questions": questions}, indent=2, default=str))
+                               "questions": questions, "code_on_harmless": harmless_runs},
+                              indent=2, default=str))
     print(f"\nWrote {out}")
 
 

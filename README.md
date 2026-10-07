@@ -16,6 +16,10 @@ so it is free to use.
 - **Generalises to new kinds of questions:** 78% routing accuracy on 60
   labelled queries, and **73%** on question categories never seen in training,
   where a bag-of-words classifier drops to 60%.
+- **Computes exact answers instead of guessing:** for arithmetic, counting and
+  similar questions the small model writes a Python expression that a
+  sandboxed evaluator computes. On held-out questions this took it from
+  **53% to 95%** correct, including rephrased questions.
 - **Safety net:** a deterministic check retries a cheap answer on the large
   model when it is empty, refused, cut off, hedging or missing requested code.
   It cannot catch an answer that is confidently wrong, and in the live runs
@@ -226,7 +230,7 @@ Written up deliberately — these are the interesting parts.
    The next section measures how often the small model fails these silently,
    and what a rule-based fix does and doesn't catch.
 
-## Silent failures: measured, partly addressed
+## Silent failures: measured, then fixed with a calculator
 
 Escalation can only see an answer that *looks* broken. For exact-answer
 questions a small model answers fluently and confidently whether it is right
@@ -280,11 +284,61 @@ large model answers the flagged questions correctly: the free tier's quota
 allowed one check (correct). If it holds up, enabling the rules is a
 quality-first setting worth its cost.
 
-**The better fix is probably not a bigger model.** For arithmetic, counting,
-primality and string reversal, a tool (run the calculation in code) gives a
-verifiably right answer for almost nothing; a larger model only makes a right
-answer more likely. The rules already identify these questions, which makes
-them the natural trigger for a tool call.
+### The fix that works: compute, don't guess
+
+For arithmetic, counting, primality, reversal and digit sums a larger model
+only makes a right answer more likely. Computing it makes it right. So for
+these questions (`router/tools.py`) the small model does not answer: it writes
+**one Python expression**, and a locked-down evaluator computes it.
+
+- **The evaluator is not `eval`.** It walks the expression's syntax tree and
+  allows only a whitelist: literals, arithmetic, comparisons, a few builtins
+  (`len`, `sum`, `any`, `is_prime`, ...), a few string methods, slicing and
+  simple comprehensions. No imports, no attribute access, no lambdas; size
+  limits on powers, ranges, string growth and loop steps. Tests cover classic
+  sandbox escapes (`__import__`, `().__class__.__bases__...`) and resource
+  bombs (`10 ** 10 ** 10`, nested million-step loops), all rejected within
+  a fraction of a second.
+- **It falls back safely.** If the model says `NONE`, writes something
+  outside the whitelist, or writes a literal that computes nothing (`'1174'`,
+  `'LIFO' == 'LIFO'`), the router answers normally. A wrong guess wrapped in
+  quotes is not treated as a computation.
+- **A trigger decides when to try it**, broader than the risk rules so it also
+  catches rephrasings ("Multiply 407 by 62, ..."). Open-world lists are
+  excluded: they can't be computed, and trying first cost an extra 11 s on
+  the live run.
+
+**Held-out result** (40 fresh questions, seed 13;
+[`results/exact_answer_eval_seed13.json`](results/exact_answer_eval_seed13.json)):
+
+| Small model (`gemini-3.1-flash-lite`) | Correct |
+|---|---|
+| Answering directly | 21 / 40 (53%) |
+| Writing an expression | 34 / 40 (85%) |
+| **Router policy** (code when the trigger fires and code answers, else direct) | **38 / 40 (95%)** |
+
+It works on paraphrases too (direct 10/20, code 16/20), which the pattern
+rules could not catch at all. On the 43 harmless questions the trigger fired
+once and the model declined; forced through the code path, every answer it
+produced was correct (extracting emails, 45 °C → 113 °F, 10% of 200).
+
+How the design got there: a first round (seed 11, now development data)
+showed three problems: `any`/`all` missing from the whitelist, quoted guesses
+accepted as computations, and lists glued into one string. Fixing those after
+seeing seed 11 is why the reported numbers come from a seed nothing was tuned
+on. The honest caveat: the trigger was written knowing the question
+templates, so its coverage on these questions is optimistic.
+
+**On the live set** ([`results/benchmark_gemini_free16_code.json`](results/benchmark_gemini_free16_code.json))
+the tool answered the arithmetic and primality questions by code
+(`17 * 24 + 3**7 - 1024 / 8` = 2467, `is_prime(1729)` = no), both correct, at
+a quarter of the direct answer's cost. Quality and total cost are unchanged,
+since the small model had already got those two right; median latency moved
+from 5.0 s to 6.1 s (heuristic), mostly one call measured on a different day
+under different load.
+
+**The code tool is on by default** (`ENABLE_CODE_TOOL=1`); the risk rules stay
+opt-in. Single-turn questions only, so conversation context is never dropped.
 
 ## Lessons from live testing
 
@@ -501,7 +555,7 @@ Delete `data/response_cache.sqlite` to force fresh calls.
 ## Project layout
 
 ```
-src/router/     config, features, heuristic, classifier, escalation, risk, pipeline, llm, cache, types
+src/router/     config, features, heuristic, classifier, escalation, risk, tools, pipeline, llm, cache, types
 src/api/        FastAPI service + demo page (static/)
 evals/          dataset.jsonl, judge, benchmark runner, router training, analysis, exact-answer eval
 tests/          offline unit tests

@@ -149,6 +149,14 @@ PROVIDER_MAX_RETRIES = int(os.getenv("PROVIDER_MAX_RETRIES", "2"))
 # See router/risk.py and evals/exact_answer_eval.py.
 ENABLE_RISK_RULES = os.getenv("ENABLE_RISK_RULES", "0") == "1"
 
+# Answer exact-answer questions (arithmetic, counting, primality, ...) by
+# having the small model write an expression that router/tools.py computes
+# in a sandbox. On by default: on 40 held-out questions (seed 13) it took the
+# small model from 21/40 to 38/40 correct, was harmless on 43 ordinary
+# questions, and costs one extra small call only when the trigger fires.
+# See evals/exact_answer_eval.py and the README.
+ENABLE_CODE_TOOL = os.getenv("ENABLE_CODE_TOOL", "1") == "1"
+
 # Router decision threshold. P(complex) above this routes to LARGE.
 ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 

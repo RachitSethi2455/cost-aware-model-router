@@ -1,0 +1,903 @@
+{
+  "preset": "gemini-free",
+  "small": "gemini-3.1-flash-lite",
+  "large": "gemini-3.6-flash",
+  "seed": 13,
+  "questions": [
+    {
+      "id": "arithmetic-c1",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 288 * 49 - 1104 / 8 + 361? Reply with just the number.",
+      "expected": 14335,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "14352",
+      "code_status": "declined",
+      "code_expression": "14340.0",
+      "code": false
+    },
+    {
+      "id": "letter_count-c1",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'c' appear in the word 'accommodate'? Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'accommodate'.count('c')",
+      "code": true
+    },
+    {
+      "id": "primality-c1",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 10039 a prime number? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": true,
+      "small_reply": "Yes",
+      "code_status": "answered",
+      "code_expression": "is_prime(10039)",
+      "code": true
+    },
+    {
+      "id": "digit_sum-c1",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 2680564018725? Reply with just the number.",
+      "expected": 54,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "72",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"2680564018725\")",
+      "code": true
+    },
+    {
+      "id": "reversal-c1",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'mississippi'. Reply with just the reversed word.",
+      "expected": "ippississim",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": true,
+      "small_reply": "ippississim",
+      "code_status": "answered",
+      "code_expression": "'mississippi'[::-1]",
+      "code": true
+    },
+    {
+      "id": "arithmetic-c2",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 915 * 45 - 4131 / 17 + 434? Reply with just the number.",
+      "expected": 41366,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "41454",
+      "code_status": "answered",
+      "code_expression": "915*45-4131/17+434",
+      "code": true
+    },
+    {
+      "id": "letter_count-c2",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'k' appear in the word 'bookkeeper'? Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'bookkeeper'.lower().count('k')",
+      "code": true
+    },
+    {
+      "id": "primality-c2",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 16951 a prime number? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": true,
+      "small_reply": "No.",
+      "code_status": "answered",
+      "code_expression": "is_prime(16951)",
+      "code": true
+    },
+    {
+      "id": "digit_sum-c2",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 7659062647190? Reply with just the number.",
+      "expected": 62,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "78",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"7659062647190\")",
+      "code": true
+    },
+    {
+      "id": "reversal-c2",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'accommodate'. Reply with just the reversed word.",
+      "expected": "etadommocca",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": true,
+      "small_reply": "etadommocca",
+      "code_status": "answered",
+      "code_expression": "'accommodate'[::-1]",
+      "code": true
+    },
+    {
+      "id": "arithmetic-c3",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 395 * 67 - 1040 / 13 + 337? Reply with just the number.",
+      "expected": 26722,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "26788",
+      "code_status": "declined",
+      "code_expression": "26792",
+      "code": false
+    },
+    {
+      "id": "letter_count-c3",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'r' appear in the word 'abracadabra'? Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'abracadabra'.count('r')",
+      "code": true
+    },
+    {
+      "id": "primality-c3",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 5419 a prime number? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": true,
+      "small_reply": "Yes.",
+      "code_status": "answered",
+      "code_expression": "is_prime(5419)",
+      "code": true
+    },
+    {
+      "id": "digit_sum-c3",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 7902791421834? Reply with just the number.",
+      "expected": 57,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "64",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"7902791421834\")",
+      "code": true
+    },
+    {
+      "id": "reversal-c3",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'strawberry'. Reply with just the reversed word.",
+      "expected": "yrrebwarts",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": true,
+      "small_reply": "yrrebwarts",
+      "code_status": "answered",
+      "code_expression": "'strawberry'[::-1]",
+      "code": true
+    },
+    {
+      "id": "arithmetic-c4",
+      "type": "arithmetic",
+      "wording": "canonical",
+      "query": "What is 203 * 49 - 2296 / 8 + 114? Reply with just the number.",
+      "expected": 9774,
+      "kind": "number",
+      "flagged_by": [
+        "exact_arithmetic"
+      ],
+      "small": false,
+      "small_reply": "9713",
+      "code_status": "answered",
+      "code_expression": "203 * 49 - 2296 // 8 + 114",
+      "code": true
+    },
+    {
+      "id": "letter_count-c4",
+      "type": "letter_count",
+      "wording": "canonical",
+      "query": "How many times does the letter 'b' appear in the word 'abracadabra'? Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [
+        "character_counting"
+      ],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'abracadabra'.count('b')",
+      "code": true
+    },
+    {
+      "id": "primality-c4",
+      "type": "primality",
+      "wording": "canonical",
+      "query": "Is 13969 a prime number? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [
+        "number_theory"
+      ],
+      "small": true,
+      "small_reply": "No.",
+      "code_status": "answered",
+      "code_expression": "is_prime(13969)",
+      "code": true
+    },
+    {
+      "id": "digit_sum-c4",
+      "type": "digit_sum",
+      "wording": "canonical",
+      "query": "What is the sum of the digits of 2401626877910? Reply with just the number.",
+      "expected": 53,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "63",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"2401626877910\")",
+      "code": true
+    },
+    {
+      "id": "reversal-c4",
+      "type": "reversal",
+      "wording": "canonical",
+      "query": "Reverse the letters of the word 'embarrassment'. Reply with just the reversed word.",
+      "expected": "tnemssarrabme",
+      "kind": "text",
+      "flagged_by": [
+        "string_transform"
+      ],
+      "small": false,
+      "small_reply": "tnemsarrabme",
+      "code_status": "answered",
+      "code_expression": "'embarrassment'[::-1]",
+      "code": true
+    },
+    {
+      "id": "arithmetic-p5",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 525 by 82, subtract the result of dividing 1190 by 10, then add 131. What do you get? Reply with just the number.",
+      "expected": 43062,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "43061",
+      "code_status": "answered",
+      "code_expression": "525 * 82 - 1190 // 10 + 131",
+      "code": true
+    },
+    {
+      "id": "letter_count-p5",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 'm' occurs in 'millennium'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'millennium'.count('m')",
+      "code": true
+    },
+    {
+      "id": "primality-p5",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 16193 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "Yes",
+      "code_status": "answered",
+      "code_expression": "any(16193 % i == 0 for i in range(2, int(16193**0.5) + 1))",
+      "code": true
+    },
+    {
+      "id": "digit_sum-p5",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 136033438863. Reply with just the number.",
+      "expected": 48,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "48",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"136033438863\")",
+      "code": true
+    },
+    {
+      "id": "reversal-p5",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'millennium' backwards. Reply with just the result.",
+      "expected": "muinnellim",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "muinnellim",
+      "code_status": "declined",
+      "code_expression": "'muinellim'",
+      "code": false
+    },
+    {
+      "id": "arithmetic-p6",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 457 by 17, subtract the result of dividing 1918 by 7, then add 126. What do you get? Reply with just the number.",
+      "expected": 7621,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "7713",
+      "code_status": "answered",
+      "code_expression": "457 * 17 - 1918 // 7 + 126",
+      "code": true
+    },
+    {
+      "id": "letter_count-p6",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 'r' occurs in 'occurrence'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'occurrence'.count('r')",
+      "code": true
+    },
+    {
+      "id": "primality-p6",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 4037 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "Yes.",
+      "code_status": "answered",
+      "code_expression": "any(4037 % i == 0 for i in range(2, int(4037**0.5) + 1))",
+      "code": true
+    },
+    {
+      "id": "digit_sum-p6",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 153801275837. Reply with just the number.",
+      "expected": 50,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "48",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"153801275837\")",
+      "code": true
+    },
+    {
+      "id": "reversal-p6",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'bookkeeper' backwards. Reply with just the result.",
+      "expected": "repeekkoob",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "repeekkoob",
+      "code_status": "declined",
+      "code_expression": "'repeekkoob'",
+      "code": false
+    },
+    {
+      "id": "arithmetic-p7",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 341 by 27, subtract the result of dividing 1884 by 12, then add 219. What do you get? Reply with just the number.",
+      "expected": 9269,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "9126",
+      "code_status": "answered",
+      "code_expression": "341 * 27 - 1884 // 12 + 219",
+      "code": true
+    },
+    {
+      "id": "letter_count-p7",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 's' occurs in 'embarrassment'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "4",
+      "code_status": "answered",
+      "code_expression": "'embarrassment'.count('s')",
+      "code": true
+    },
+    {
+      "id": "primality-p7",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 13327 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "no",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "Yes",
+      "code_status": "answered",
+      "code_expression": "any(13327 % i == 0 for i in range(2, int(13327**0.5) + 1))",
+      "code": true
+    },
+    {
+      "id": "digit_sum-p7",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 2865574116512. Reply with just the number.",
+      "expected": 53,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "56",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"2865574116512\")",
+      "code": true
+    },
+    {
+      "id": "reversal-p7",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'millennium' backwards. Reply with just the result.",
+      "expected": "muinnellim",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "muinnellim",
+      "code_status": "declined",
+      "code_expression": "'muinellim'",
+      "code": false
+    },
+    {
+      "id": "arithmetic-p8",
+      "type": "arithmetic",
+      "wording": "paraphrase",
+      "query": "Multiply 172 by 45, subtract the result of dividing 1368 by 9, then add 228. What do you get? Reply with just the number.",
+      "expected": 7816,
+      "kind": "number",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "7552",
+      "code_status": "answered",
+      "code_expression": "172 * 45 - 1368 // 9 + 228",
+      "code": true
+    },
+    {
+      "id": "letter_count-p8",
+      "type": "letter_count",
+      "wording": "paraphrase",
+      "query": "Count how often 't' occurs in 'committee'. Reply with just the number.",
+      "expected": 2,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "2",
+      "code_status": "answered",
+      "code_expression": "'committee'.count('t')",
+      "code": true
+    },
+    {
+      "id": "primality-p8",
+      "type": "primality",
+      "wording": "paraphrase",
+      "query": "Does 10417 have any divisors other than 1 and itself? Reply with just yes or no.",
+      "expected": "yes",
+      "kind": "yesno",
+      "flagged_by": [],
+      "small": false,
+      "small_reply": "No.",
+      "code_status": "answered",
+      "code_expression": "not is_prime(10417)",
+      "code": true
+    },
+    {
+      "id": "digit_sum-p8",
+      "type": "digit_sum",
+      "wording": "paraphrase",
+      "query": "Add up all the digits in 3683840491592. Reply with just the number.",
+      "expected": 62,
+      "kind": "number",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "62",
+      "code_status": "answered",
+      "code_expression": "sum(int(d) for d in \"3683840491592\")",
+      "code": true
+    },
+    {
+      "id": "reversal-p8",
+      "type": "reversal",
+      "wording": "paraphrase",
+      "query": "Write 'accommodate' backwards. Reply with just the result.",
+      "expected": "etadommocca",
+      "kind": "text",
+      "flagged_by": [],
+      "small": true,
+      "small_reply": "etadommocca",
+      "code_status": "declined",
+      "code_expression": "'etadommocca'",
+      "code": false
+    }
+  ],
+  "code_on_harmless": [
+    {
+      "query": "What is the capital of Australia?",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "Define idempotency in the context of HTTP methods.",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "Convert this to title case: the quick brown fox jumps over the lazy dog",
+      "status": "unsafe",
+      "triggered": false,
+      "expression": "\"the quick brown fox jumps over the lazy dog\".title()",
+      "answer": null
+    },
+    {
+      "query": "Rewrite this sentence to be more concise: In light of the fact that the deadline is approaching rapidly, we should probably consider the possibility of prioritizing our tasks.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "\"We should prioritize tasks since the deadline is near.\"",
+      "answer": null
+    },
+    {
+      "query": "Classify the sentiment of this review as positive, negative, or neutral: 'Shipping took forever but the product itself is fine.'",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'neutral'",
+      "answer": null
+    },
+    {
+      "query": "What does the acronym CRUD stand for in software development?",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "Extract all the email addresses from this text: Contact ravi@example.com or the support desk at help@acme.co.in before Friday.",
+      "status": "answered",
+      "triggered": false,
+      "expression": "[w for w in \"Contact ravi@example.com or the support desk at help@acme.co.in before Friday.\".split() if \"@\" in w and \".\" in w.split(\"@\")[-1]]",
+      "answer": "ravi@example.com, help@acme.co.in"
+    },
+    {
+      "query": "Translate 'Where is the nearest railway station?' into Hindi.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'\u0938\u092c\u0938\u0947 \u0928\u095b\u0926\u0940\u0915\u0940 \u0930\u0947\u0932\u0935\u0947 \u0938\u094d\u091f\u0947\u0936\u0928 \u0915\u0939\u093e\u0901 \u0939\u0948?'",
+      "answer": null
+    },
+    {
+      "query": "What is the time complexity of binary search on a sorted array?",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "Turn this list into a comma-separated string: apples, bananas, cherries, dates",
+      "status": "answered",
+      "triggered": false,
+      "expression": "\", \".join([\"apples\", \"bananas\", \"cherries\", \"dates\"])",
+      "answer": "apples, bananas, cherries, dates"
+    },
+    {
+      "query": "Who wrote the novel 'Things Fall Apart'?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'Chinua Achebe'",
+      "answer": null
+    },
+    {
+      "query": "Is this a valid email address? user@@domain.com. Answer yes or no.",
+      "status": "answered",
+      "triggered": false,
+      "expression": "\"user@@domain.com\".count(\"@\") == 1 and \".\" in \"user@@domain.com\".split(\"@\")[-1]",
+      "answer": "no"
+    },
+    {
+      "query": "Summarize in one sentence: Python's GIL prevents multiple native threads from executing Python bytecode simultaneously, which limits CPU-bound multithreading but does not affect I/O-bound concurrency.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "\"Python's GIL restricts CPU-bound multithreading by preventing simultaneous bytecode execution, though it remains ineffective against I/O-bound tasks.\"",
+      "answer": null
+    },
+    {
+      "query": "What port does PostgreSQL listen on by default?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "5432",
+      "answer": null
+    },
+    {
+      "query": "Write a one-line git command to discard all uncommitted local changes.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'git reset --hard'",
+      "answer": null
+    },
+    {
+      "query": "What is the difference between a list and a tuple in Python?",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "From this log line, extract the status code: 127.0.0.1 - - [22/Aug/2026:10:15:01] \"GET /api/users HTTP/1.1\" 503 1247",
+      "status": "answered",
+      "triggered": false,
+      "expression": "'127.0.0.1 - - [22/Aug/2026:10:15:01] \"GET /api/users HTTP/1.1\" 503 1247'.split('\"')[-1].split()[0]",
+      "answer": "503"
+    },
+    {
+      "query": "Which SQL keyword removes duplicate rows from a result set?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'DISTINCT'",
+      "answer": null
+    },
+    {
+      "query": "Spell out the number 4728 in English words.",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "What HTTP status code means 'Too Many Requests'?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "429",
+      "answer": null
+    },
+    {
+      "query": "Name the four pillars of object-oriented programming.",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "Convert 45 degrees Celsius to Fahrenheit.",
+      "status": "answered",
+      "triggered": false,
+      "expression": "45 * 9 / 5 + 32",
+      "answer": "113"
+    },
+    {
+      "query": "In two lines, what is a database index for?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "\"It makes data retrieval significantly faster by mapping values to row locations,\\nwhile reducing the need for full table scans during search operations.\"",
+      "answer": null
+    },
+    {
+      "query": "Is a stack LIFO or FIFO?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'LIFO' == 'LIFO'",
+      "answer": null
+    },
+    {
+      "query": "List the verbs in this sentence: The engineer refactored the module, ran the tests, and deployed the service.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "['refactored', 'ran', 'deployed']",
+      "answer": null
+    },
+    {
+      "query": "I was reading through some documentation earlier today and I came across a term that I had not encountered before, and I wanted to make sure I understood it correctly before I used it in a conversation with my team, because I would rather ask than get it wrong in front of people. The term was 'idempotent' and it appeared in the context of API design. Could you tell me what it means?",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "So I have been working on this project for a while now and there are a lot of moving parts, and honestly it has been a bit overwhelming trying to keep track of everything. Anyway, the specific thing I need right now is simple: what is the command to create a new branch in git and switch to it in one step?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "\"git checkout -b <branch-name>\"",
+      "answer": null
+    },
+    {
+      "query": "How many continents are there?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "7",
+      "answer": null
+    },
+    {
+      "query": "How many days are in a leap year?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "366",
+      "answer": null
+    },
+    {
+      "query": "What year did World War II end?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "1945",
+      "answer": null
+    },
+    {
+      "query": "List three primary colours.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "['red', 'yellow', 'blue']",
+      "answer": null
+    },
+    {
+      "query": "List the days of the week.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']",
+      "answer": null
+    },
+    {
+      "query": "Name a famous painting by Leonardo da Vinci.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "\"Mona Lisa\"",
+      "answer": null
+    },
+    {
+      "query": "What is the boiling point of water in Celsius?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "100",
+      "answer": null
+    },
+    {
+      "query": "Is Python a compiled language?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "False",
+      "answer": null
+    },
+    {
+      "query": "What does 'prime' mean in 'prime minister'?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "\"first in rank, authority, or importance\"",
+      "answer": null
+    },
+    {
+      "query": "Convert 5 kilometres to metres.",
+      "status": "answered",
+      "triggered": false,
+      "expression": "5 * 1000",
+      "answer": "5000"
+    },
+    {
+      "query": "What is the plural of 'mouse'?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'mice'",
+      "answer": null
+    },
+    {
+      "query": "Spell the word 'necessary'.",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'necessary'",
+      "answer": null
+    },
+    {
+      "query": "Give me a synonym for 'quick'.",
+      "status": "declined",
+      "triggered": false,
+      "expression": null,
+      "answer": null
+    },
+    {
+      "query": "What is 10% of 200?",
+      "status": "answered",
+      "triggered": false,
+      "expression": "200 * 0.1",
+      "answer": "20"
+    },
+    {
+      "query": "Who wrote 'Pride and Prejudice'?",
+      "status": "declined",
+      "triggered": false,
+      "expression": "'Jane Austen'",
+      "answer": null
+    },
+    {
+      "query": "What is the opposite of 'reverse' gear in a car?",
+      "status": "declined",
+      "triggered": true,
+      "expression": "'forward'",
+      "answer": null
+    }
+  ]
+}
