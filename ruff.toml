@@ -1,0 +1,20 @@
+# Lint config (ruff.toml rather than pyproject.toml: Vercel reads
+# pyproject.toml for dependencies, and this project keeps those in
+# requirements*.txt).
+target-version = "py311"
+line-length = 100
+extend-exclude = [".venv"]
+
+[lint]
+# pyflakes + pycodestyle errors, import sorting, bugbear, pyupgrade.
+select = ["F", "E", "W", "I", "B", "UP"]
+ignore = [
+    "E501",   # long lines: wrapped by judgement, not mechanically
+]
+
+[lint.per-file-ignores]
+# Scripts and tests put src/ on sys.path before importing project modules.
+"evals/*.py" = ["E402"]
+"scripts/*.py" = ["E402"]
+"tests/*.py" = ["E402"]
+"app.py" = ["E402"]

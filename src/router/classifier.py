@@ -68,7 +68,7 @@ def load(path: Path = MODEL_ARTIFACT) -> Pipeline | None:
 def coefficients(pipe: Pipeline) -> dict[str, float]:
     """Readable feature weights — used for the README and for debugging misroutes."""
     clf = pipe.named_steps["clf"]
-    return dict(zip(FEATURE_NAMES, clf.coef_[0].round(3).tolist()))
+    return dict(zip(FEATURE_NAMES, clf.coef_[0].round(3).tolist(), strict=True))
 
 
 class ClassifierRouter:
@@ -103,6 +103,6 @@ class ClassifierRouter:
             "intercept": float(clf.intercept_[0]),
             "features": [
                 {"name": name, "value": float(v), "contribution": float(t)}
-                for name, v, t in zip(FEATURE_NAMES, x, terms)
+                for name, v, t in zip(FEATURE_NAMES, x, terms, strict=True)
             ],
         }

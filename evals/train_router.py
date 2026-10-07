@@ -35,7 +35,7 @@ DATASET = Path(__file__).parent / "dataset.jsonl"
 
 
 def load_rows() -> list[dict]:
-    return [json.loads(l) for l in DATASET.read_text().splitlines() if l.strip()]
+    return [json.loads(line) for line in DATASET.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
 def labels_from_prior(rows: list[dict]) -> list[int]:

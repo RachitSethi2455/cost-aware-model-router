@@ -5,10 +5,10 @@ Keep this file as the single source of truth so the benchmark and the API
 never disagree about what a request cost.
 """
 
-from dataclasses import dataclass
-from pathlib import Path
 import os
 import sys
+from dataclasses import dataclass
+from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 

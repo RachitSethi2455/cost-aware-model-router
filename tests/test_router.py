@@ -115,6 +115,7 @@ if __name__ == "__main__":
 class TestClassifierArtifact:
     def test_stale_artifact_falls_back_to_heuristic(self, tmp_path):
         import numpy as np
+
         from router.classifier import ClassifierRouter, build_pipeline, save
 
         # A model trained on fewer features than the code now extracts.
@@ -131,6 +132,7 @@ class TestClassifierArtifact:
 def test_response_cache_survives_concurrent_threads(tmp_path):
     """The API shares one cache across its thread pool."""
     from concurrent.futures import ThreadPoolExecutor
+
     from router.cache import ResponseCache
 
     cache = ResponseCache(tmp_path / "cache.sqlite")

@@ -95,6 +95,7 @@ class TestOpenAICompatUsage:
 
     def make_provider(self, usage):
         from types import SimpleNamespace as NS
+
         from router.providers.openai_compat import OpenAICompatProvider
 
         p = OpenAICompatProvider(base_url="http://localhost:11434/v1", api_key_env="UNSET_KEY")
@@ -138,6 +139,7 @@ class TestDemo:
 
     def test_contributions_explain_the_probability(self, app_client, monkeypatch, tmp_path):
         import math
+
         from router.classifier import ClassifierRouter, save, train
         queries = ["What is the capital of France?", "Define an API.",
                    "Explain why and compare the tradeoffs of two designs in depth.",

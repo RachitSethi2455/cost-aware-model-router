@@ -42,7 +42,7 @@ THRESHOLDS = (0.3, 0.4, 0.5, 0.6, 0.7)
 
 
 def load() -> tuple[list[str], np.ndarray, np.ndarray]:
-    rows = [json.loads(l) for l in DATASET.read_text(encoding="utf-8").splitlines() if l.strip()]
+    rows = [json.loads(line) for line in DATASET.read_text(encoding="utf-8").splitlines() if line.strip()]
     return ([r["query"] for r in rows],
             np.array([int(r["prior"] == "large") for r in rows]),
             np.array([r["category"] for r in rows]))

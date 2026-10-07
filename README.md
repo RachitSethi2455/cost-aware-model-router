@@ -1,5 +1,24 @@
 # Adaptive LLM Router
 
+[![tests](https://github.com/RachitSethi2455/cost-aware-model-router/actions/workflows/ci.yml/badge.svg)](https://github.com/RachitSethi2455/cost-aware-model-router/actions/workflows/ci.yml)
+
+**At a glance**
+
+- **Live result:** on real Gemini models, routing cut cost **52–82%** against
+  always using the large model, kept **94%** of its answer quality, and cut
+  median latency from 11.1 s to 4.4 s. First run, 9 questions; see
+  [Results](#results) for what that sample can and can't show.
+- **Generalises to new kinds of questions:** 78% routing accuracy on 60
+  labelled queries, and **73%** on question categories never seen in training,
+  where a bag-of-words classifier drops to 60%.
+- **Fails safe:** a deterministic quality check retries a weak cheap answer on
+  the large model, so a wrong routing guess costs one extra call, not a wrong
+  answer.
+- **Engineering:** FastAPI service with a free interactive demo page, 7
+  provider presets (Anthropic, OpenAI, Gemini, Groq, DeepSeek, OpenRouter,
+  local), response cache, cost accounting, Docker / Render / Vercel configs,
+  and an offline test suite in CI.
+
 Per-request model selection for LLM applications. Classifies incoming query
 complexity, dispatches to a small or large model accordingly, and escalates
 automatically when the small model's answer fails a set of deterministic

@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "src"), str(ROOT / "evals")]
 
 import run_benchmark  # noqa: E402
+
 from router.llm import LLMClient  # noqa: E402
 from router.types import CallResult  # noqa: E402
 
@@ -57,7 +58,7 @@ def test_router_analysis_leave_one_category_out_counts():
     import analyze_router
     queries, y, cats = analyze_router.load()
     loco = analyze_router.leave_one_category_out(queries, y, cats)
-    for name, per_cat in loco.items():
+    for per_cat in loco.values():
         assert set(per_cat) == set(cats)
         for c, correct in per_cat.items():
             assert 0 <= correct <= (cats == c).sum()

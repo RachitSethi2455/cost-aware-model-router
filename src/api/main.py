@@ -33,7 +33,7 @@ from router import heuristic
 from router.classifier import ClassifierRouter
 from router.config import ROUTE_THRESHOLD
 from router.features import extract
-from router.pipeline import RouterPipeline, RouterMode
+from router.pipeline import RouterMode, RouterPipeline
 
 # Read after the router imports so values from .env are already loaded.
 # A public deployment must not let strangers spend the owner's API key.

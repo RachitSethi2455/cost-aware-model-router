@@ -3,3 +3,4 @@
 pytest>=8.3.0
 httpx>=0.27.0        # FastAPI TestClient
 matplotlib>=3.9.0    # scripts/make_chart.py
+ruff>=0.6            # lint (config: ruff.toml)

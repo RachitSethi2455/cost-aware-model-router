@@ -15,7 +15,7 @@ from typing import Literal
 
 from . import heuristic
 from .classifier import ClassifierRouter
-from .config import LARGE, ROUTE_THRESHOLD, SMALL, TIERS
+from .config import LARGE, ROUTE_THRESHOLD, TIERS
 from .escalation import should_escalate
 from .features import extract
 from .llm import LLMClient
