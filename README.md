@@ -4,16 +4,17 @@
 
 **At a glance**
 
-- **Live result:** on real Gemini models, routing cut cost **52–82%** against
-  always using the large model, kept **94%** of its answer quality, and cut
-  median latency from 11.1 s to 4.4 s. First run, 9 questions; see
-  [Results](#results) for what that sample can and can't show.
+- **Live result:** on real Gemini models (14 questions), routing cut cost
+  **36–76%** against always using the large model while keeping **93–96%** of
+  its answer quality, and cut median latency from 12.1 s to 5–8 s. The two
+  routers sit at different points on that trade-off; see [Results](#results).
 - **Generalises to new kinds of questions:** 78% routing accuracy on 60
   labelled queries, and **73%** on question categories never seen in training,
   where a bag-of-words classifier drops to 60%.
-- **Fails safe:** a deterministic quality check retries a weak cheap answer on
-  the large model, so a wrong routing guess costs one extra call, not a wrong
-  answer.
+- **Safety net:** a deterministic check retries a cheap answer on the large
+  model when it is empty, refused, cut off, hedging or missing requested code.
+  It cannot catch an answer that is confidently wrong, and in the live runs
+  routing, not escalation, did all the quality protection.
 - **Drop-in for existing apps:** an OpenAI-compatible endpoint, so any
   OpenAI client can use the router by changing its base URL and sending
   `model="auto"`.
@@ -79,43 +80,50 @@ CI runs the full offline suite on every push.
 ## Results
 
 Four arms, all through identical pipeline code so the comparison isn't
-confounded. **First live run: 9 questions only**, on the `gemini-free` preset
-(small `gemini-3.1-flash-lite`, large `gemini-3.6-flash`, judge
-`gemini-3.5-flash`), 6 Oct 2026. The free tier's overload errors and daily
-quotas stopped the full 60-question run, so these 9 are the questions with a
-reference answer: 3 lookup/format, 1 reasoning, 2 complex, 3 adversarial.
-Raw results: [`results/benchmark_gemini_free_n9.json`](results/benchmark_gemini_free_n9.json).
+confounded. **Live run on 14 questions**, `gemini-free` preset (small
+`gemini-3.1-flash-lite`, large `gemini-3.6-flash`, judge `gemini-3.5-flash`),
+6–7 Oct 2026. The questions are 4 from each category of the eval set
+(lookup/format, reasoning/code, complex, adversarial); 2 of the planned 16
+were dropped because the free tier's overload errors never let the large
+model produce a reference answer. The full 60-question run needs a paid key.
+Raw results: [`results/benchmark_gemini_free16.json`](results/benchmark_gemini_free16.json).
 
 | Arm | Quality | $/100 req | p50 latency | % routed small |
 |---|---|---|---|---|
-| All small | 0.889 | $0.078 | 4.2 s | 100% |
-| All large | 1.000 (reference) | $0.855 | 11.1 s | 0% |
-| Heuristic router | 0.944 | $0.152 | 4.4 s | 89% |
-| Classifier router | 0.944 | $0.409 | 4.4 s | 67% |
+| All small | 0.893 | $0.086 | 4.5 s | 100% |
+| All large | 1.000 (reference) | $0.843 | 12.1 s | 0% |
+| Heuristic router | 0.929 | $0.199 | 5.0 s | 86% |
+| Classifier router | **0.964** | $0.543 | 8.1 s | 50% |
 
-Against always-large: the heuristic router cut cost **82%** and the classifier
-**52%**, both keeping **94%** of quality, at about 2.5x lower median latency.
-Costs are at paid-tier rates; latency is each model call as originally
-measured.
+Against always-large, the two routers land at different points on the
+cost/quality curve: the heuristic cut cost **76%** keeping **93%** of quality;
+the classifier cut cost **36%** keeping **96%**. Costs are at paid-tier
+rates; latency is each model call as originally measured.
 
-What the 9 questions do and don't show:
+What the 14 questions show:
 
+- **Where the quality goes.** The small model fell short on 3 of 14: a
+  reasoning explanation (m01), a subtle bug fix (m04) and an exhaustive list
+  (a03). The classifier sent 2 of those 3 to the large model, the heuristic
+  only 1; that is the whole quality difference between them.
+- **What the classifier's caution costs.** It also sent 4 questions to the
+  large model that the small model answered fully. Its labels say how hard a
+  question *looks*, which overestimates what this small model needs.
+  Relabelling from observed outcomes (`train_router.py --from-benchmark`)
+  is the fix, once the full 60-question run exists.
 - **Routing pays even with a small price gap.** The large model's list price is
-  about 3x the small one's, but it cost 11x more per request because it writes
-  far more (hidden reasoning) tokens. Output volume drives cost more than the
-  price list does.
-- **The heuristic beat the classifier here,** by two questions: the classifier
-  sent two complex questions to the large model that the small model answered
-  fully. Nine questions can't separate the two routers; the offline evaluation
-  below (60 queries, unseen categories) is the better guide to routing
-  accuracy.
-- **The small model was already strong:** full marks on 7 of 9. The quality
-  gap between these two Gemini tiers is narrow, which caps how much routing
-  can save on quality.
-- **Escalation never fired.** On "List the countries that border exactly three
-  other countries" the small model returned a confident but incomplete list.
-  Structural checks (empty, refused, truncated, hedging) cannot see a wrong
-  answer that looks complete; this is limitation 5 observed live.
+  about 3x the small one's, but it cost about 10x more per request because it
+  writes far more (hidden reasoning) tokens. Output volume drives cost more
+  than the price list does.
+- **Escalation never fired.** All the quality protection came from routing.
+  On "List the countries that border exactly three other countries" the small
+  model returned a confident but incomplete list; structural checks (empty,
+  refused, truncated, hedging) cannot see a wrong answer that looks complete.
+  This is limitation 5, observed live.
+
+A first run on 9 of these questions
+([`results/benchmark_gemini_free_n9.json`](results/benchmark_gemini_free_n9.json))
+had the heuristic ahead; the larger sample separated the two routers.
 
 **Router accuracy (offline, no API calls; `python evals/analyze_router.py`):**
 
