@@ -27,8 +27,12 @@ class Provider(Protocol):
         prompt: str,
         system: str | None,
         max_tokens: int,
+        history: list[dict] | None = None,
     ) -> tuple[str, int, int, str | None, str | None]:
         """Return (text, input_tokens, output_tokens, stop_reason, error).
+
+        history holds earlier turns ({"role": "user"|"assistant", "content"})
+        sent before `prompt`, the latest user message.
 
         Must not raise on API errors — return them in the error slot so the
         escalation layer can decide what to do.

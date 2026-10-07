@@ -45,10 +45,11 @@ class OpenAICompatProvider:
         self.client = OpenAI(base_url=base_url, api_key=api_key, max_retries=PROVIDER_MAX_RETRIES)
         self.extra_headers = extra_headers or {}
 
-    def complete(self, model_id, prompt, system, max_tokens):
+    def complete(self, model_id, prompt, system, max_tokens, history=None):
         messages = []
         if system:
             messages.append({"role": "system", "content": system})
+        messages.extend(history or [])
         messages.append({"role": "user", "content": prompt})
 
         try:

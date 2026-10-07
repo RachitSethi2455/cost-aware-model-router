@@ -27,7 +27,8 @@ class FakePipeline:
         self.outcome = outcome
         self.threshold = 0.5
 
-    def run(self, query, system=None, threshold=None):
+    def run(self, query, **kwargs):
+        self.seen = {"query": query, **kwargs}
         if isinstance(self.outcome, Exception):
             raise self.outcome
         return self.outcome
@@ -196,7 +197,7 @@ def test_request_threshold_does_not_leak_into_later_requests(monkeypatch):
     from router.pipeline import RouterPipeline
 
     class FakeLLM:
-        def complete(self, spec, prompt, system=None, max_tokens=None):
+        def complete(self, spec, prompt, **kwargs):
             return call("Tokyo is the capital city of Japan.", spec.name)
 
     pipe = RouterPipeline(mode="heuristic", client=FakeLLM())
@@ -214,3 +215,125 @@ def test_sdk_retries_follow_config():
     from router.providers.openai_compat import OpenAICompatProvider
     p = OpenAICompatProvider(base_url="http://localhost:11434/v1", api_key_env="UNSET_KEY")
     assert p.client.max_retries == PROVIDER_MAX_RETRIES
+
+
+class TestOpenAICompatible:
+    """/v1/chat/completions must look like OpenAI's API to existing clients."""
+
+    @pytest.fixture
+    def chat(self, monkeypatch):
+        def use(outcome, modes=None):
+            pipe = FakePipeline(outcome)
+
+            def get(mode):
+                if modes is not None:
+                    modes.append(mode)
+                return pipe
+            monkeypatch.setattr(main, "get_pipeline", get)
+            return TestClient(main.app), pipe
+        return use
+
+    def test_response_shape_and_conversation_passthrough(self, chat):
+        c, pipe = chat(routed([call("Paris is the capital of France.", "small")]))
+        body = c.post("/v1/chat/completions", json={
+            "model": "auto",
+            "temperature": 0.2,  # ignored, must not be rejected
+            "messages": [
+                {"role": "system", "content": "Be brief."},
+                {"role": "user", "content": "Hi"},
+                {"role": "assistant", "content": "Hello!"},
+                {"role": "user", "content": [{"type": "text", "text": "Capital of France?"}]},
+            ],
+        }).json()
+
+        assert body["object"] == "chat.completion" and body["id"].startswith("chatcmpl-")
+        assert body["model"] == "small-model"
+        choice = body["choices"][0]
+        assert choice["message"] == {"role": "assistant", "content": "Paris is the capital of France."}
+        assert choice["finish_reason"] == "stop"
+        assert body["usage"] == {"prompt_tokens": 5, "completion_tokens": 5, "total_tokens": 10}
+        assert body["router"]["tier_served"] == "small"
+        # Routing sees the latest user message; the model gets the whole conversation.
+        assert pipe.seen["query"] == "Capital of France?"
+        assert pipe.seen["system"] == "Be brief."
+        assert pipe.seen["history"] == [{"role": "user", "content": "Hi"},
+                                        {"role": "assistant", "content": "Hello!"}]
+
+    def test_model_names_select_the_mode(self, chat):
+        modes = []
+        c, _ = chat(routed([call("ok, a long enough answer", "large")]), modes)
+        for model in ("auto", "small", "large"):
+            c.post("/v1/chat/completions",
+                   json={"model": model, "messages": [{"role": "user", "content": "hi"}]})
+        assert modes == ["classifier", "always_small", "always_large"]
+
+    @pytest.mark.parametrize("payload, code", [
+        ({"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}, "model_not_found"),
+        ({"stream": True, "messages": [{"role": "user", "content": "hi"}]}, "stream_unsupported"),
+        ({"messages": [{"role": "user", "content": [{"type": "image_url"}]}]}, "unsupported_content"),
+        ({"messages": [{"role": "user", "content": "hi"},
+                       {"role": "assistant", "content": "yo"}]}, None),
+    ])
+    def test_bad_requests_get_openai_style_400s(self, chat, payload, code):
+        c, _ = chat(routed([call("unused answer text here", "small")]))
+        r = c.post("/v1/chat/completions", json=payload)
+        assert r.status_code == 400
+        assert r.json()["error"]["code"] == code and r.json()["error"]["message"]
+
+    def test_truncation_and_provider_failure(self, chat):
+        cut = call("The CAP theorem", "large")
+        cut.stop_reason = "max_tokens"
+        c, _ = chat(routed([cut]))
+        r = c.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": "x"}]})
+        assert r.json()["choices"][0]["finish_reason"] == "length"
+
+        c, _ = chat(routed([call("", "small", error="RateLimitError: 429"),
+                            call("", "large", error="RateLimitError: 429")], escalated=True))
+        r = c.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": "x"}]})
+        assert r.status_code == 502 and "429" in r.json()["error"]["message"]
+
+    def test_public_demo_blocks_chat(self, chat, monkeypatch):
+        c, _ = chat(routed([call("unused answer text here", "small")]))
+        monkeypatch.setattr(main, "PUBLIC_DEMO", True)
+        r = c.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": "x"}]})
+        assert r.status_code == 403 and r.json()["error"]["message"]
+
+    def test_models_list(self):
+        ids = [m["id"] for m in TestClient(main.app).get("/v1/models").json()["data"]]
+        assert ids == ["auto", "small", "large"]
+
+
+def test_providers_send_history_before_the_prompt(monkeypatch):
+    from types import SimpleNamespace as NS
+
+    from router.providers.anthropic_provider import AnthropicProvider
+    from router.providers.openai_compat import OpenAICompatProvider
+
+    history = [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}]
+    sent = {}
+
+    oa = OpenAICompatProvider(base_url="http://localhost:11434/v1", api_key_env="UNSET_KEY")
+    oa_resp = NS(choices=[NS(message=NS(content="ok"), finish_reason="stop")],
+                 usage=NS(prompt_tokens=1, completion_tokens=1, total_tokens=2))
+    oa.client = NS(chat=NS(completions=NS(create=lambda **kw: sent.update(oa=kw) or oa_resp)))
+    oa.complete("m", "Next?", "Be brief.", 64, history=history)
+    assert [m["role"] for m in sent["oa"]["messages"]] == ["system", "user", "assistant", "user"]
+    assert sent["oa"]["messages"][-1]["content"] == "Next?"
+
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    an = AnthropicProvider()
+    an_resp = NS(stop_reason="end_turn", content=[NS(type="text", text="ok")],
+                 usage=NS(input_tokens=1, output_tokens=1))
+    an.client = NS(messages=NS(create=lambda **kw: sent.update(an=kw) or an_resp))
+    an.complete("m", "Next?", "Be brief.", 64, history=history)
+    assert sent["an"]["messages"] == [*history, {"role": "user", "content": "Next?"}]
+    assert sent["an"]["system"] == "Be brief."
+
+
+def test_cache_key_unchanged_for_single_turn_calls():
+    """Existing cached answers must stay reachable after adding history."""
+    from router.config import SMALL
+    from router.llm import LLMClient
+    key = LLMClient._cache_key(SMALL, "q", None, 8192)
+    assert key == f"{SMALL.provider}||||q||8192"
+    assert LLMClient._cache_key(SMALL, "q", None, 8192, [{"role": "user", "content": "a"}]) != key

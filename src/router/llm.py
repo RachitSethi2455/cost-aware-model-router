@@ -11,6 +11,7 @@ change.
 
 from __future__ import annotations
 
+import json
 import time
 
 from .cache import ResponseCache
@@ -24,10 +25,20 @@ class LLMClient:
         self.cache = cache or ResponseCache()
 
     @staticmethod
-    def _cache_key(spec: ModelSpec, prompt: str, system: str | None, max_tokens: int) -> str:
+    def _cache_key(
+        spec: ModelSpec,
+        prompt: str,
+        system: str | None,
+        max_tokens: int,
+        history: list[dict] | None = None,
+    ) -> str:
         # Includes provider: the same model_id on two providers can return
         # different text, and conflating them would poison the results.
-        return f"{spec.provider}||{system or ''}||{prompt}||{max_tokens}"
+        key = f"{spec.provider}||{system or ''}||{prompt}||{max_tokens}"
+        # Single-turn keys keep their original form so existing caches stay valid.
+        if history:
+            key += "||" + json.dumps(history, sort_keys=True, ensure_ascii=False)
+        return key
 
     def cached(
         self,
@@ -35,9 +46,11 @@ class LLMClient:
         prompt: str,
         system: str | None = None,
         max_tokens: int = MAX_TOKENS,
+        history: list[dict] | None = None,
     ) -> CallResult | None:
         """The cached result for this call, or None. Never calls the provider."""
-        hit = self.cache.get(spec.model_id, self._cache_key(spec, prompt, system, max_tokens))
+        key = self._cache_key(spec, prompt, system, max_tokens, history)
+        hit = self.cache.get(spec.model_id, key)
         return CallResult(**{**hit, "cached": True}) if hit else None
 
     def complete(
@@ -46,9 +59,12 @@ class LLMClient:
         prompt: str,
         system: str | None = None,
         max_tokens: int = MAX_TOKENS,
+        history: list[dict] | None = None,
     ) -> CallResult:
-        cache_key = self._cache_key(spec, prompt, system, max_tokens)
-        hit = self.cached(spec, prompt, system, max_tokens)
+        """history: earlier turns as [{"role": "user"|"assistant", "content": str}],
+        sent before `prompt`, which is the latest user message."""
+        cache_key = self._cache_key(spec, prompt, system, max_tokens, history)
+        hit = self.cached(spec, prompt, system, max_tokens, history)
         if hit:
             return hit
 
@@ -56,7 +72,7 @@ class LLMClient:
 
         start = time.perf_counter()
         text, in_tok, out_tok, stop_reason, error = provider.complete(
-            spec.model_id, prompt, system, max_tokens
+            spec.model_id, prompt, system, max_tokens, history=history
         )
         latency = time.perf_counter() - start
 

@@ -63,18 +63,29 @@ class RouterPipeline:
         return self._clf.route(query, t)
 
     def run(
-        self, query: str, system: str | None = None, threshold: float | None = None
+        self,
+        query: str,
+        system: str | None = None,
+        threshold: float | None = None,
+        history: list[dict] | None = None,
+        max_tokens: int | None = None,
     ) -> RoutedResponse:
         """threshold overrides the pipeline default for this call only.
 
         Pipelines are shared across API requests, so a per-request setting
         must never be stored on self.
+
+        history: earlier conversation turns. Routing looks at `query` (the
+        latest user message) only; both model tiers see the full history.
         """
         started = time.perf_counter()
         tier, confidence = self._decide(query, threshold)
         spec = TIERS[tier]
+        gen = {"system": system, "history": history}
+        if max_tokens is not None:
+            gen["max_tokens"] = max_tokens
 
-        first = self.client.complete(spec, query, system=system)
+        first = self.client.complete(spec, query, **gen)
         calls = [first]
         escalated = False
         reason = None
@@ -86,7 +97,7 @@ class RouterPipeline:
             if decision.escalate:
                 escalated = True
                 reason = decision.reason
-                retry = self.client.complete(LARGE, query, system=system)
+                retry = self.client.complete(LARGE, query, **gen)
                 calls.append(retry)
                 final = retry
 

@@ -14,10 +14,13 @@
 - **Fails safe:** a deterministic quality check retries a weak cheap answer on
   the large model, so a wrong routing guess costs one extra call, not a wrong
   answer.
+- **Drop-in for existing apps:** an OpenAI-compatible endpoint, so any
+  OpenAI client can use the router by changing its base URL and sending
+  `model="auto"`.
 - **Engineering:** FastAPI service with a free interactive demo page, 7
   provider presets (Anthropic, OpenAI, Gemini, Groq, DeepSeek, OpenRouter,
   local), response cache, cost accounting, Docker / Render / Vercel configs,
-  and an offline test suite in CI.
+  and an offline test suite plus lint in CI.
 
 Per-request model selection for LLM applications. Classifies incoming query
 complexity, dispatches to a small or large model accordingly, and escalates
@@ -339,6 +342,36 @@ curl localhost:8000/stats
 ```
 
 Interactive docs at `http://localhost:8000/docs`.
+
+### OpenAI-compatible endpoint
+
+Existing apps can use the router by changing one line: point any OpenAI
+client at the router and send `model="auto"`.
+
+```python
+from openai import OpenAI
+
+client = OpenAI(base_url="http://localhost:8000/v1", api_key="unused")
+r = client.chat.completions.create(
+    model="auto",  # or "small" / "large" to force a tier
+    messages=[{"role": "user", "content": "What is the capital of Japan?"}],
+)
+print(r.choices[0].message.content)   # The capital of Japan is Tokyo.
+print(r.model)                        # gemini-3.1-flash-lite (the model that answered)
+print(r.model_extra["router"])        # tier chosen/served, escalated, confidence, cost
+```
+
+- Routing reads the latest user message; both tiers receive the whole
+  conversation, including system messages.
+- `usage` counts every billed call, including an escalation retry.
+- Other OpenAI parameters (`temperature`, ...) are accepted and ignored.
+  Streaming and non-text content return a 400 for now.
+- Errors use OpenAI's `{"error": {...}}` shape, so the SDK raises its usual
+  exceptions (`BadRequestError`, ...). `GET /v1/models` lists `auto`,
+  `small` and `large`.
+
+Verified with the official `openai` Python SDK against live Gemini models,
+including a multi-turn conversation.
 
 ### Demo page
 

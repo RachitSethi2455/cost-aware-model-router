@@ -20,11 +20,11 @@ class AnthropicProvider:
         self._anthropic = anthropic
         self.client = anthropic.Anthropic(api_key=api_key, max_retries=PROVIDER_MAX_RETRIES)
 
-    def complete(self, model_id, prompt, system, max_tokens):
+    def complete(self, model_id, prompt, system, max_tokens, history=None):
         kwargs = {
             "model": model_id,
             "max_tokens": max_tokens,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [*(history or []), {"role": "user", "content": prompt}],
         }
         if system:
             kwargs["system"] = system

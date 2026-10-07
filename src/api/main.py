@@ -6,6 +6,9 @@ Endpoints:
     GET  /health   - liveness + whether a trained router is loaded
     GET  /stats    - cumulative cost/tier counters for this process
     GET  /         - interactive demo page (uses /explain only)
+    POST /v1/chat/completions - OpenAI-compatible; model="auto" routes,
+                   "small"/"large" force a tier
+    GET  /v1/models          - the model names above
 
 Error contract for /route:
     503 - the router is not configured (missing API key, SDK not installed).
@@ -21,19 +24,21 @@ from __future__ import annotations
 
 import os
 import time
+import uuid
 from collections import Counter, deque
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from router import heuristic
 from router.classifier import ClassifierRouter
-from router.config import ROUTE_THRESHOLD
+from router.config import LARGE, ROUTE_THRESHOLD, SMALL
 from router.features import extract
-from router.pipeline import RouterMode, RouterPipeline
+from router.pipeline import RoutedResponse, RouterMode, RouterPipeline
 
 # Read after the router imports so values from .env are already loaded.
 # A public deployment must not let strangers spend the owner's API key.
@@ -176,41 +181,60 @@ def explain(req: RouteRequest, request: Request) -> dict:
     }
 
 
-@app.post("/route", response_model=RouteResponse)
-def route(req: RouteRequest) -> RouteResponse:
+class RoutingFailed(Exception):
+    """A /route or /v1/chat/completions call that cannot return an answer.
+
+    Each endpoint renders it in its own error format.
+    """
+
+    def __init__(self, status: int, message: str, detail: dict | str | None = None):
+        super().__init__(message)
+        self.status = status
+        self.message = message
+        self.detail = detail if detail is not None else message
+
+
+DEMO_BLOCKED = ("Model calls are disabled on the public demo. Use /explain, "
+                "or run the project locally with your own API key.")
+
+
+def run_routed(mode: RouterMode, query: str, **run_kwargs) -> RoutedResponse:
+    """Shared by both answering endpoints: demo guard, errors, counters."""
     if PUBLIC_DEMO:
-        raise HTTPException(
-            status_code=403,
-            detail="Model calls are disabled on the public demo. Use /explain, "
-                   "or run the project locally with your own API key.",
-        )
-    pipe = get_pipeline(req.mode)
+        raise RoutingFailed(403, DEMO_BLOCKED)
     try:
-        result = pipe.run(req.query, system=req.system, threshold=req.threshold)
+        result = get_pipeline(mode).run(query, **run_kwargs)
     except RuntimeError as exc:
         # Raised while building a provider client, before any model call.
         # This is a configuration problem, not a server crash.
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise RoutingFailed(503, str(exc)) from exc
 
     # The final call is the one whose answer we would return. If it failed
     # (and escalation could not rescue it), returning 200 with an empty answer
     # would hide the failure from the caller.
     final = result.calls[-1]
     if final.error:
-        raise HTTPException(
-            status_code=502,
-            detail={
-                "message": "Model provider call failed.",
-                "model_id": final.model_id,
-                "error": final.error,
-                "escalated": result.escalated,
-            },
-        )
+        raise RoutingFailed(502, "Model provider call failed.", {
+            "message": "Model provider call failed.",
+            "model_id": final.model_id,
+            "error": final.error,
+            "escalated": result.escalated,
+        })
 
     _counters[result.tier_served] += 1
     if result.escalated:
         _counters["escalations"] += 1
     _cost_total["usd"] += result.total_cost_usd
+    return result
+
+
+@app.post("/route", response_model=RouteResponse)
+def route(req: RouteRequest) -> RouteResponse:
+    try:
+        result = run_routed(req.mode, req.query, system=req.system, threshold=req.threshold)
+    except RoutingFailed as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
+    final = result.calls[-1]
 
     return RouteResponse(
         answer=result.answer,
@@ -224,6 +248,126 @@ def route(req: RouteRequest) -> RouteResponse:
         n_calls=len(result.calls),
         truncated=final.stop_reason == "max_tokens",
     )
+
+
+# ---- OpenAI-compatible endpoint -------------------------------------------
+# Point any OpenAI client at this server (base_url=".../v1") and send
+# model="auto": the router picks the tier per request. "small" and "large"
+# force a tier. Routing reads the latest user message; both tiers receive
+# the whole conversation.
+
+CHAT_MODELS: dict[str, RouterMode] = {
+    "auto": "classifier",
+    "small": "always_small",
+    "large": "always_large",
+}
+FINISH_REASONS = {"max_tokens": "length", "refusal": "content_filter"}
+
+
+class ChatMessage(BaseModel):
+    role: Literal["system", "developer", "user", "assistant"]
+    content: str | list[dict] | None = None
+
+
+class ChatRequest(BaseModel):
+    # Other OpenAI parameters (temperature, top_p, ...) are accepted and
+    # ignored, so existing client code works unchanged.
+    model_config = {"extra": "allow"}
+
+    model: str = "auto"
+    messages: list[ChatMessage] = Field(..., min_length=1)
+    max_tokens: int | None = Field(None, ge=1)
+    max_completion_tokens: int | None = Field(None, ge=1)
+    stream: bool = False
+
+
+def openai_error(status: int, message: str, code: str | None = None) -> JSONResponse:
+    kind = "invalid_request_error" if status < 500 else "api_error"
+    return JSONResponse(status_code=status, content={
+        "error": {"message": message, "type": kind, "param": None, "code": code},
+    })
+
+
+def _text(message: ChatMessage) -> str:
+    """Plain text of a message; content may be a string or a list of parts."""
+    if message.content is None or isinstance(message.content, str):
+        return message.content or ""
+    parts = message.content
+    if any(p.get("type") != "text" for p in parts):
+        raise ValueError("Only text content is supported.")
+    return "".join(p.get("text", "") for p in parts)
+
+
+@app.get("/v1/models")
+def list_models() -> dict:
+    targets = {"auto": "routed per request", "small": SMALL.model_id, "large": LARGE.model_id}
+    return {"object": "list", "data": [
+        {"id": name, "object": "model", "created": 0, "owned_by": "llm-router",
+         "routes_to": target}
+        for name, target in targets.items()
+    ]}
+
+
+@app.post("/v1/chat/completions")
+def chat_completions(req: ChatRequest):
+    if req.stream:
+        return openai_error(400, "Streaming is not supported yet; send stream=false.",
+                            "stream_unsupported")
+    mode = CHAT_MODELS.get(req.model)
+    if mode is None:
+        return openai_error(400, f"Unknown model {req.model!r}. Use one of: "
+                                 f"{', '.join(CHAT_MODELS)}.", "model_not_found")
+    try:
+        texts = [_text(m) for m in req.messages]
+    except ValueError as exc:
+        return openai_error(400, str(exc), "unsupported_content")
+    if req.messages[-1].role != "user":
+        return openai_error(400, "The last message must have role 'user'.")
+
+    system = "\n\n".join(t for m, t in zip(req.messages, texts, strict=True)
+                         if m.role in ("system", "developer")) or None
+    turns = [{"role": m.role, "content": t}
+             for m, t in zip(req.messages[:-1], texts[:-1], strict=True)
+             if m.role in ("user", "assistant")]
+
+    try:
+        result = run_routed(
+            mode, texts[-1], system=system, history=turns or None,
+            max_tokens=req.max_completion_tokens or req.max_tokens,
+        )
+    except RoutingFailed as exc:
+        return openai_error(exc.status, exc.message if exc.status != 502
+                            else f"{exc.message} {exc.detail['error']}")
+
+    final = result.calls[-1]
+    prompt_tokens = sum(c.input_tokens for c in result.calls)
+    completion_tokens = sum(c.output_tokens for c in result.calls)
+    return {
+        "id": f"chatcmpl-{uuid.uuid4().hex}",
+        "object": "chat.completion",
+        "created": int(time.time()),
+        "model": final.model_id,
+        "choices": [{
+            "index": 0,
+            "message": {"role": "assistant", "content": result.answer},
+            "finish_reason": FINISH_REASONS.get(final.stop_reason, "stop"),
+        }],
+        # Billed tokens across every call, including an escalation retry.
+        "usage": {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
+        },
+        # Extension field; standard clients ignore unknown keys.
+        "router": {
+            "tier_chosen": result.tier_chosen,
+            "tier_served": result.tier_served,
+            "escalated": result.escalated,
+            "escalation_reason": result.escalation_reason,
+            "confidence": round(result.router_confidence, 4),
+            "cost_usd": round(result.total_cost_usd, 6),
+        },
+    }
 
 
 @app.get("/stats")
