@@ -151,6 +151,59 @@ def is_correct(reply: str, expected, kind: str) -> bool:
     return expected in tokens
 
 
+# Paraphrases written by a model, not by the person who wrote the trigger.
+# Two styles so the wording varies. The answer-format sentence ("Reply with
+# just the number.") is kept out of the rewrite and re-attached unchanged.
+PARAPHRASE_PROMPTS = {
+    "llm-neutral": (
+        "Rewrite this question so it asks for exactly the same thing in different words. "
+        "Keep every number, letter and quoted word exactly as written. Do not answer it. "
+        "Reply with only the rewritten question.\n\nQuestion: {question}"
+    ),
+    "llm-casual": (
+        "Rephrase this question casually, the way a person might type it into a chat, asking "
+        "for exactly the same thing. Keep every number, letter and quoted word exactly as "
+        "written. Do not answer it. Reply with only the rephrased question.\n\n"
+        "Question: {question}"
+    ),
+}
+
+
+def _paraphrase_keeps_meaning(original: str, paraphrase: str) -> bool:
+    """Every number and quoted string of the original must survive the rewrite,
+    otherwise the computed answer would no longer apply."""
+    low = paraphrase.lower()
+    numbers = re.findall(r"\d+", original)
+    quoted = re.findall(r"'([^']+)'", original)
+    return (all(n in re.findall(r"\d+", paraphrase) for n in numbers)
+            and all(q.lower() in low for q in quoted))
+
+
+def llm_paraphrases(client, seed: int, per_wording: int, cached_only: bool) -> tuple[list, list]:
+    """Model-written rewrites of the canonical questions; (kept, rejected)."""
+    kept, rejected = [], []
+    for q in generate(seed, per_wording):
+        if q["wording"] != "canonical":
+            continue
+        body, _, suffix = q["query"].partition(" Reply with")
+        for style, template in PARAPHRASE_PROMPTS.items():
+            prompt = template.format(question=body)
+            try:
+                res = (client.cached(SMALL, prompt) if cached_only
+                       else client.complete(SMALL, prompt))
+            except DailyQuotaExhausted as exc:
+                # Generated rewrites are cached; a re-run continues from here.
+                print(f"  ! {exc}")
+                return kept, rejected
+            text = (res.text if res and not res.error else "").strip().strip('"').strip()
+            if not text or "\n" in text or not _paraphrase_keeps_meaning(body, text):
+                rejected.append({"id": q["id"], "style": style, "paraphrase": text})
+                continue
+            kept.append({**q, "id": f"{q['id']}-{style}", "wording": style,
+                         "query": f"{text} Reply with{suffix}", "original": q["query"]})
+    return kept, rejected
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--tiers", nargs="+", default=["small", "large"],
@@ -166,10 +219,20 @@ def main() -> None:
     ap.add_argument("--large-only-flagged", action="store_true",
                     help="ask the large model only the questions the rules flag: the ones "
                          "routing would send it, which is what decides whether the rules help")
+    ap.add_argument("--llm-paraphrase", action="store_true",
+                    help="test on model-written rewrites of the canonical questions instead "
+                         "of the hand-written paraphrase template")
     args = ap.parse_args()
 
-    questions = generate(args.seed, args.per_wording)
     client = RetryingClient()
+    rejected_paraphrases = []
+    if args.llm_paraphrase:
+        questions, rejected_paraphrases = llm_paraphrases(
+            client, args.seed, args.per_wording, args.cached_only)
+        print(f"Model-written paraphrases: kept {len(questions)}, rejected "
+              f"{len(rejected_paraphrases)} that changed a number or quoted word")
+    else:
+        questions = generate(args.seed, args.per_wording)
     specs = {"small": SMALL, "large": LARGE}
     print(f"{len(questions)} generated questions (seed {args.seed}), preset {PROVIDER_PRESET}: "
           f"small {SMALL.model_id}, large {LARGE.model_id}\n")
@@ -212,12 +275,14 @@ def main() -> None:
         xs = [x for x in xs if x is not None]
         return f"{sum(xs)}/{len(xs)}" if xs else "-"
 
-    print(f"{'type':<14}{'wording':<12}{'flagged':>9}{'small ok':>10}{'large ok':>10}{'code ok':>10}")
+    print(f"{'type':<14}{'wording':<12}{'trigger':>9}{'flagged':>9}{'small ok':>10}"
+          f"{'large ok':>10}{'code ok':>10}")
     groups = defaultdict(list)
     for q in questions:
         groups[(q["type"], q["wording"])].append(q)
     for (qtype, wording), qs in groups.items():
-        print(f"{qtype:<14}{wording:<12}{rate([bool(q['flagged_by']) for q in qs]):>9}"
+        print(f"{qtype:<14}{wording:<12}{rate([looks_computable(q['query']) for q in qs]):>9}"
+              f"{rate([bool(q['flagged_by']) for q in qs]):>9}"
               f"{rate([q.get('small') for q in qs]):>10}{rate([q.get('large') for q in qs]):>10}"
               f"{rate([q.get('code') for q in qs]):>10}")
 
@@ -247,7 +312,7 @@ def main() -> None:
         print(f"Small model answering directly vs writing code (n={len(with_code)}): "
               f"{rate([q['small'] for q in with_code])} vs {rate([q['code'] for q in with_code])}  "
               f"[code path: {dict(statuses)}]")
-        for wording in ("canonical", "paraphrase"):
+        for wording in sorted({q["wording"] for q in with_code}):
             sub = [q for q in with_code if q["wording"] == wording]
             print(f"  {wording:<11} direct {rate([q['small'] for q in sub])}, "
                   f"code {rate([q['code'] for q in sub])}")
@@ -289,10 +354,16 @@ def main() -> None:
                 print(f"    {mark}answered {h['answer']!r:<12} via {h['expression']!r:<40} | {h['query'][:60]}")
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = RESULTS_DIR / f"exact_answer_eval_seed{args.seed}.json"
+    suffix = "_llm_paraphrase" if args.llm_paraphrase else ""
+    # A cache-only re-score is for checking, not reporting: never let it
+    # overwrite a results file the README cites.
+    if args.cached_only:
+        suffix += "_rescored"
+    out = RESULTS_DIR / f"exact_answer_eval_seed{args.seed}{suffix}.json"
     out.write_text(json.dumps({"preset": PROVIDER_PRESET, "small": SMALL.model_id,
                                "large": LARGE.model_id, "seed": args.seed,
-                               "questions": questions, "code_on_harmless": harmless_runs},
+                               "questions": questions, "code_on_harmless": harmless_runs,
+                               "rejected_paraphrases": rejected_paraphrases},
                               indent=2, default=str))
     print(f"\nWrote {out}")
 

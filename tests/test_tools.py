@@ -111,16 +111,17 @@ def test_solve_with_code_outcomes(reply, error, status, answer):
     from router.config import SMALL
     from router.tools import solve_with_code
     client = ScriptedClient(reply, error)
-    result = solve_with_code(client, SMALL, "What is 486 * 83 - 4267 / 17 + 449?")
+    # Worded, so it needs the model; symbolic arithmetic would be parsed directly.
+    result = solve_with_code(client, SMALL, "Multiply 486 by 83, subtract 4267 divided by 17, then add 449.")
     assert (result.status, result.answer) == (status, answer)
-    assert "Question: What is 486 * 83" in client.prompts[0]
+    assert "Question: Multiply 486 by 83" in client.prompts[0]
 
 
 def test_solve_with_code_cached_only_makes_no_call():
     from router.config import SMALL
     from router.tools import solve_with_code
     client = ScriptedClient("1 + 1")
-    result = solve_with_code(client, SMALL, "What is 1 + 1?", cached_only=True)
+    result = solve_with_code(client, SMALL, "Add 1 and 1 together.", cached_only=True)
     assert result.status == "failed" and client.prompts == []
 
 
@@ -170,7 +171,7 @@ def _pipe(code_reply, enabled=True):
 
 def test_pipeline_answers_by_code_when_triggered():
     pipe, llm = _pipe("486 * 83 - 4267 // 17 + 449")
-    result = pipe.run("What is 486 * 83 - 4267 / 17 + 449?")
+    result = pipe.run("Multiply 486 by 83, subtract 4267 divided by 17, then add 449.")
     assert result.answer == "40536" and result.tier_served == "small"
     assert result.tool == {"expression": "486 * 83 - 4267 // 17 + 449", "answer": "40536"}
     assert len(result.calls) == 1 and len(llm.prompts) == 1
@@ -178,7 +179,7 @@ def test_pipeline_answers_by_code_when_triggered():
 
 def test_pipeline_falls_back_and_counts_the_extra_call():
     pipe, llm = _pipe("NONE")
-    result = pipe.run("What is 486 * 83 - 4267 / 17 + 449?")
+    result = pipe.run("Multiply 486 by 83, subtract 4267 divided by 17, then add 449.")
     assert result.tool is None and result.answer == "A direct answer of some length."
     assert len(result.calls) == 2 and result.total_cost_usd == 0.002
 
@@ -199,3 +200,46 @@ def test_open_world_lists_do_not_trigger_the_tool():
     from router.tools import looks_computable
     q = "List the countries that border exactly three other countries."
     assert silent_failure_risks(q) == ["exhaustive_list"] and not looks_computable(q)
+
+
+@pytest.mark.parametrize("question, expression", [
+    ("What is 557 * 65 - 2484 / 12 + 424? Reply with just the number.", "557 * 65 - 2484 / 12 + 424"),
+    ("Calculate the result of 557 * 65 - 2484 / 12 + 424.", "557 * 65 - 2484 / 12 + 424"),
+    ("hey, what's 10 - 3?", "10 - 3"),
+    ("What is 17 * 24 + 3^7 - 1024 / 8?", "17 * 24 + 3**7 - 1024 / 8"),
+    ("What is (12 + 3) * 4?", "(12 + 3) * 4"),
+    ("Is 12 * 3 greater than 40?", None),            # not a bare calculation
+    ("What is 2026-10-07?", None),                    # a date, not subtraction
+    ("I have 3 + 4 apples, how many is that?", None),
+    ("Multiply 407 by 62, then subtract 5.", None),   # words: the model handles it
+])
+def test_direct_arithmetic_parses_only_bare_calculations(question, expression):
+    from router.tools import direct_arithmetic
+    assert direct_arithmetic(question) == expression
+
+
+def test_bare_calculations_need_no_model_call():
+    from router.config import SMALL
+    from router.tools import solve_with_code
+    client = ScriptedClient("this would be wrong")
+    result = solve_with_code(client, SMALL, "Calculate the result of 557 * 65 - 2484 / 12 + 424.")
+    assert (result.status, result.answer, result.call) == ("answered", "36422", None)
+    assert client.prompts == []
+
+
+def test_api_handles_an_answer_with_no_model_call(monkeypatch):
+    """/route and /v1 must not assume at least one model call."""
+    from fastapi.testclient import TestClient
+
+    from api import main
+    from router.pipeline import RouterPipeline
+
+    pipe = RouterPipeline(mode="heuristic", client=PipelineLLM("unused"), enable_code_tool=True)
+    monkeypatch.setattr(main, "get_pipeline", lambda mode: pipe)
+    c = TestClient(main.app)
+    q = "What is 17 * 24 + 3^7 - 1024 / 8?"
+
+    r = c.post("/route", json={"query": q}).json()
+    assert r["answer"] == "2467" and r["n_calls"] == 0 and r["cost_usd"] == 0
+    r = c.post("/v1/chat/completions", json={"messages": [{"role": "user", "content": q}]}).json()
+    assert r["choices"][0]["message"]["content"] == "2467" and r["model"] == "calculator"

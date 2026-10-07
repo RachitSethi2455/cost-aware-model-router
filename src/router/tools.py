@@ -38,6 +38,8 @@ len, sum, abs, min, max, round, int, str, sorted, reversed, any, all, range, is_
 string methods .count .lower .upper .replace .split .join, slicing like s[::-1],
 and simple comprehensions like sum(int(d) for d in str(n)).
 For a yes/no question, write an expression that evaluates to True or False.
+Do not work out the answer yourself: write the expression that computes it.
+A bare number or string is not accepted, even if the question says "calculate".
 If the question has no exact answer that code can compute, reply with NONE.
 
 Reply with only the expression or NONE: no explanation, no code fences.
@@ -364,8 +366,47 @@ class CodeAnswer:
     detail: str | None = None
 
 
+# A question that is only an arithmetic expression in symbols, wrapped in a
+# "what is / calculate" frame, needs no model at all: parse it and compute it.
+# Seed 17 showed why: asked to "Calculate the result of 557 * 65 - ...", the
+# small model did the arithmetic in its head and wrote a wrong number.
+_EXPRESSION_SPAN = re.compile(
+    r"\(*\s*\d+(?:\.\d+)?\s*\)*(?:\s*[-+*/×÷^]\s*\(*\s*\d+(?:\.\d+)?\s*\)*)+"
+)
+_UNSPACED_HYPHEN = re.compile(r"\d-\d")  # dates (2026-10-07) and ranges (3-5)
+_QUESTION_FRAME = re.compile(
+    r"^(?:(?:hey|hi|yo|so|ok|okay|quick question)[,!]?\s+)?"
+    r"(?:what\s+is|what's|whats|calculate|compute|evaluate|work\s+out|solve|find)"
+    r"(?:\s+the\s+(?:result|value|answer))?(?:\s+of)?\s*$",
+    re.IGNORECASE,
+)
+
+
+def direct_arithmetic(question: str) -> str | None:
+    """The expression to compute if the question is nothing but symbolic
+    arithmetic in a question frame; None otherwise ("Is 12 * 3 > 40?" is not)."""
+    body = re.split(r"\s+(?:Reply|Answer|Respond|Give)\b", question, maxsplit=1)[0]
+    match = _EXPRESSION_SPAN.search(body)
+    if not match or _UNSPACED_HYPHEN.search(match.group(0)):
+        return None
+    frame = (body[:match.start()] + body[match.end():]).strip().rstrip("?.!:= ").strip()
+    if not _QUESTION_FRAME.match(frame):
+        return None
+    return match.group(0).strip().replace("^", "**").replace("×", "*").replace("÷", "/")
+
+
 def solve_with_code(client, spec, question: str, cached_only: bool = False) -> CodeAnswer:
-    """Ask `spec` for an expression that answers `question`, then compute it."""
+    """Compute `question`'s answer: parse it directly when it is plain symbolic
+    arithmetic, otherwise ask `spec` for an expression and compute that."""
+    parsed = direct_arithmetic(question)
+    if parsed is not None:
+        try:
+            value = safe_eval(parsed)
+        except UnsafeExpression:
+            pass  # e.g. unbalanced parentheses: let the model try instead
+        else:
+            return CodeAnswer("answered", format_result(value), parsed, None,
+                              "parsed from the question, no model call")
     prompt = CODE_PROMPT.format(question=question)
     call = client.cached(spec, prompt) if cached_only else client.complete(spec, prompt)
     if call is None or call.error:

@@ -18,8 +18,8 @@ so it is free to use.
   where a bag-of-words classifier drops to 60%.
 - **Computes exact answers instead of guessing:** for arithmetic, counting and
   similar questions the small model writes a Python expression that a
-  sandboxed evaluator computes. On held-out questions this took it from
-  **53% to 95%** correct, including rephrased questions.
+  sandboxed evaluator computes. On fresh held-out questions this took it
+  from **58% to 100%** correct, including rephrased questions.
 - **Safety net:** a deterministic check retries a cheap answer on the large
   model when it is empty, refused, cut off, hedging or missing requested code.
   It cannot catch an answer that is confidently wrong, and in the live runs
@@ -303,31 +303,50 @@ these questions (`router/tools.py`) the small model does not answer: it writes
   outside the whitelist, or writes a literal that computes nothing (`'1174'`,
   `'LIFO' == 'LIFO'`), the router answers normally. A wrong guess wrapped in
   quotes is not treated as a computation.
+- **Plain symbolic arithmetic needs no model at all.** A question that is just
+  "what is / calculate" plus an expression in symbols (`557 * 65 - 2484 / 12 +
+  424`) is parsed and computed directly: no call, no cost, always exact. A
+  strict check keeps "Is 12 * 3 greater than 40?" or a date like
+  `2026-10-07` from being mistaken for a bare calculation.
 - **A trigger decides when to try it**, broader than the risk rules so it also
   catches rephrasings ("Multiply 407 by 62, ..."). Open-world lists are
   excluded: they can't be computed, and trying first cost an extra 11 s on
   the live run.
 
-**Held-out result** (40 fresh questions, seed 13;
-[`results/exact_answer_eval_seed13.json`](results/exact_answer_eval_seed13.json)):
+**Held-out result** (40 fresh questions, seed 19;
+[`results/exact_answer_eval_seed19.json`](results/exact_answer_eval_seed19.json)):
 
 | Small model (`gemini-3.1-flash-lite`) | Correct |
 |---|---|
-| Answering directly | 21 / 40 (53%) |
-| Writing an expression | 34 / 40 (85%) |
-| **Router policy** (code when the trigger fires and code answers, else direct) | **38 / 40 (95%)** |
+| Answering directly | 23 / 40 (58%) |
+| Writing an expression, or parsed directly | 39 / 40 (98%) |
+| **Router policy** (code when the trigger fires and code answers, else direct) | **40 / 40 (100%)** |
 
-It works on paraphrases too (direct 10/20, code 16/20), which the pattern
-rules could not catch at all. On the 43 harmless questions the trigger fired
-once and the model declined; forced through the code path, every answer it
+Paraphrased questions: direct 13/20, code 20/20, which the pattern rules
+could not catch at all. The trigger fired on all 40, and on 1 of the 43
+harmless questions ("What is the opposite of 'reverse' gear in a car?"), where
+the model declined and the router answered normally. With the design before
+this one, forced through the code path on all 43, every answer the model
 produced was correct (extracting emails, 45 °C → 113 °F, 10% of 200).
 
-How the design got there: a first round (seed 11, now development data)
-showed three problems: `any`/`all` missing from the whitelist, quoted guesses
-accepted as computations, and lists glued into one string. Fixing those after
-seeing seed 11 is why the reported numbers come from a seed nothing was tuned
-on. The honest caveat: the trigger was written knowing the question
-templates, so its coverage on these questions is optimistic.
+**Wordings I didn't write.** The trigger and paraphrase templates were written
+by the same person, so I also had the small model rewrite fresh questions in
+two styles (neutral and casual chat), keeping only rewrites that preserved
+every number and quoted word
+([`results/exact_answer_eval_seed17_llm_paraphrase.json`](results/exact_answer_eval_seed17_llm_paraphrase.json)).
+The trigger fired on all 40 rewrites and the policy got 35/40. All five misses
+were arithmetic: told to "Calculate the result of 557 * 65 - ...", the model
+did the sum in its head and wrote a wrong number (the quoted-guess check
+rejected it, but the fallback was wrong too). That is what the direct parser
+fixes: it answers all 8 of those rewrites exactly, checked offline. A full
+re-run of the model-written set with the final prompt is still to do (the free
+tier's daily quota ran out).
+
+How the design got there, and why each reported number comes from a seed
+nothing was tuned on: seed 11 exposed `any`/`all` missing from the
+whitelist, quoted guesses accepted as computations, and lists glued into one
+string; seed 13 measured that version (38/40); seed 17's model-written
+rewrites exposed mental arithmetic; seed 19 measures the final design.
 
 **On the live set** ([`results/benchmark_gemini_free16_code.json`](results/benchmark_gemini_free16_code.json))
 the tool answered the arithmetic and primality questions by code

@@ -26,3 +26,6 @@ results/*.json
 
 # Logs
 *.log
+
+# Cache-only re-scores of the exact-answer eval (checking, not reporting)
+results/*_rescored.json

@@ -228,9 +228,10 @@ def run_routed(mode: RouterMode, query: str, **run_kwargs) -> RoutedResponse:
 
     # The final call is the one whose answer we would return. If it failed
     # (and escalation could not rescue it), returning 200 with an empty answer
-    # would hide the failure from the caller.
-    final = result.calls[-1]
-    if final.error:
+    # would hide the failure from the caller. A calculator answer parsed
+    # straight from the question has no model call at all.
+    final = result.calls[-1] if result.calls else None
+    if final is not None and final.error:
         raise RoutingFailed(502, "Model provider call failed.", {
             "message": "Model provider call failed.",
             "model_id": final.model_id,
@@ -251,7 +252,7 @@ def route(req: RouteRequest) -> RouteResponse:
         result = run_routed(req.mode, req.query, system=req.system, threshold=req.threshold)
     except RoutingFailed as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
-    final = result.calls[-1]
+    final = result.calls[-1] if result.calls else None
 
     return RouteResponse(
         answer=result.answer,
@@ -263,7 +264,7 @@ def route(req: RouteRequest) -> RouteResponse:
         cost_usd=round(result.total_cost_usd, 6),
         latency_s=round(result.total_latency_s, 3),
         n_calls=len(result.calls),
-        truncated=final.stop_reason == "max_tokens",
+        truncated=final is not None and final.stop_reason == "max_tokens",
         risk_override=result.risk_override,
         tool=result.tool,
     )
@@ -358,18 +359,19 @@ def chat_completions(req: ChatRequest):
         return openai_error(exc.status, exc.message if exc.status != 502
                             else f"{exc.message} {exc.detail['error']}")
 
-    final = result.calls[-1]
+    # No calls at all when the calculator parsed the question itself.
+    final = result.calls[-1] if result.calls else None
     prompt_tokens = sum(c.input_tokens for c in result.calls)
     completion_tokens = sum(c.output_tokens for c in result.calls)
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": final.model_id,
+        "model": final.model_id if final else "calculator",
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": result.answer},
-            "finish_reason": FINISH_REASONS.get(final.stop_reason, "stop"),
+            "finish_reason": FINISH_REASONS.get(final.stop_reason, "stop") if final else "stop",
         }],
         # Billed tokens across every call, including an escalation retry.
         "usage": {

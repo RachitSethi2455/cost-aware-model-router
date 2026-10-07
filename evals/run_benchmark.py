@@ -166,7 +166,7 @@ def run_arm(
             "n_calls": len(resp.calls),
             "risk_override": resp.risk_override,
             "tool": resp.tool,
-            "failed": bool(resp.calls[-1].error),
+            "failed": bool(resp.calls and resp.calls[-1].error),
         })
     print()
 

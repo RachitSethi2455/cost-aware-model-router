@@ -151,9 +151,11 @@ ENABLE_RISK_RULES = os.getenv("ENABLE_RISK_RULES", "0") == "1"
 
 # Answer exact-answer questions (arithmetic, counting, primality, ...) by
 # having the small model write an expression that router/tools.py computes
-# in a sandbox. On by default: on 40 held-out questions (seed 13) it took the
-# small model from 21/40 to 38/40 correct, was harmless on 43 ordinary
-# questions, and costs one extra small call only when the trigger fires.
+# in a sandbox. On by default: on 40 fresh held-out questions (seed 19) it
+# took the small model from 23/40 to 40/40 correct, triggered on 1 of 43
+# ordinary questions (and safely fell back), and costs at most one extra
+# small call when it fires (none for plain symbolic arithmetic, which is
+# parsed directly).
 # See evals/exact_answer_eval.py and the README.
 ENABLE_CODE_TOOL = os.getenv("ENABLE_CODE_TOOL", "1") == "1"
 

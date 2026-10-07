@@ -75,3 +75,14 @@ def test_cached_only_never_calls_the_model(monkeypatch):
     refs = run_benchmark.build_references(
         c, [{"id": "a", "query": "q1"}, {"id": "b", "query": "q2"}], cached_only=True)
     assert refs == {"a": "ok"} and calls == []
+
+
+def test_paraphrase_check_rejects_rewrites_that_change_the_question():
+    """A model rewrite must keep every number and quoted word, or its answer is wrong."""
+    from exact_answer_eval import _paraphrase_keeps_meaning as keeps
+    original = "How many times does the letter 'e' appear in the word 'nevertheless'?"
+    assert keeps(original, "Count the e's in 'nevertheless' for me.")
+    assert not keeps(original, "Count the e's in 'neverthless' for me.")      # word changed
+    arith = "What is 486 * 83 - 4267 / 17 + 449?"
+    assert keeps(arith, "Can you work out 486 times 83, minus 4267 over 17, plus 449?")
+    assert not keeps(arith, "Can you work out 486 times 38, minus 4267 over 17, plus 449?")
