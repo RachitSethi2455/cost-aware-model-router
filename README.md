@@ -2,6 +2,11 @@
 
 [![tests](https://github.com/RachitSethi2455/cost-aware-model-router/actions/workflows/ci.yml/badge.svg)](https://github.com/RachitSethi2455/cost-aware-model-router/actions/workflows/ci.yml)
 
+**Live demo: [cost-aware-model-router.vercel.app](https://cost-aware-model-router.vercel.app).**
+Type any question and see which model the router picks, and why. The public
+demo shows routing decisions and recorded answers and makes no model calls,
+so it is free to use.
+
 **At a glance**
 
 - **Live result:** on real Gemini models (14 questions), routing cut cost
