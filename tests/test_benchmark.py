@@ -105,3 +105,40 @@ def test_report_stats_runs_on_committed_results():
     table = benchmark_report(results / "benchmark_gemini_free16.json")
     assert "n = 14 questions" in table and "| heuristic | 0.929" in table
     assert "40/40 = 100%" in exact_answer_report(results / "exact_answer_eval_seed19.json")
+
+
+class TestRoutingMetrics:
+    """RouteLLM metrics on small hand-checkable cases."""
+
+    def test_oracle_random_and_perfect_curves(self):
+        import numpy as np
+        from routing_metrics import apgr, cpt, pgr_curve, quality_curve, summarize
+
+        small = np.array([1, 1, 0, 0, 1, 0, 1, 0], dtype=float)
+        large = np.array([1, 1, 1, 1, 1, 1, 1, 0], dtype=float)
+        gain = large - small            # 4 queries where large helps
+        oracle = summarize(gain, small, large)
+        assert oracle["cpt50"] == 0.25 and oracle["cpt80"] == 0.38
+        assert oracle["apgr"] > 0.7
+
+        # A router that ranks the helpful queries last is worse than random.
+        anti = summarize(-gain, small, large)
+        assert anti["apgr"] < 0.5
+
+        # Random routing averages APGR 0.5 - 1/(2n) once calls are whole queries.
+        from routing_metrics import random_apgr
+        assert abs(random_apgr(8) - 0.4375) < 0.01 and abs(random_apgr(6637) - 0.5) < 1e-3
+        rng = np.random.default_rng(1)
+        randoms = [apgr(pgr_curve(quality_curve(rng.random(8), small, large), small, large))
+                   for _ in range(2000)]
+        assert abs(np.mean(randoms) - random_apgr(8)) < 0.01
+        assert cpt(np.array([0.0, 0.4, 0.6]), 0.5, np.array([0.0, 0.5, 1.0])) == 1.0
+
+    def test_auroc_matches_sklearn(self):
+        import numpy as np
+        from routing_metrics import auroc
+        from sklearn.metrics import roc_auc_score
+        rng = np.random.default_rng(0)
+        y = rng.integers(0, 2, 200)
+        p = np.round(rng.random(200), 1)  # many ties
+        assert abs(auroc(y, p) - roc_auc_score(y, p)) < 1e-9

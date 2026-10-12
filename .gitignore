@@ -29,3 +29,7 @@ results/*.json
 
 # Cache-only re-scores of the exact-answer eval (checking, not reporting)
 results/*_rescored.json
+
+# Downloaded datasets, embedding caches and model files (hundreds of MB)
+data/sprout/
+data/fastembed_cache/

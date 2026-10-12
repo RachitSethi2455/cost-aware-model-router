@@ -1,0 +1,6 @@
+# Offline evaluation on public datasets (evals/sprout_replay.py).
+# Kept out of requirements.txt so the deployed service stays small.
+-r requirements-dev.txt
+
+pyarrow>=16.0
+fastembed>=0.4       # MiniLM sentence embeddings via ONNX, no PyTorch needed

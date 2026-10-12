@@ -36,6 +36,9 @@ src/router/providers/      vendor adapters behind a Protocol
 src/api/main.py            FastAPI (PUBLIC_DEMO disables /route)
 src/api/static/            demo page + recorded examples.json
 evals/                     dataset.jsonl, judge, benchmark, training, analysis, exact-answer eval
+evals/routing_metrics.py   APGR / CPT / PGR curves, paired bootstrap (numpy only, tested in CI)
+evals/sprout_replay.py     offline replay on SPROUT outcomes (needs requirements-eval.txt + data/sprout)
+evals/sprout_unseen_source.py  same, holding out a whole source
 ```
 
 ## Commands
@@ -45,6 +48,7 @@ python evals/train_router.py               # offline
 python evals/run_benchmark.py --limit 10   # smoke test, costs money
 python evals/run_benchmark.py              # full run
 uvicorn api.main:app --reload --app-dir src
+python evals/sprout_replay.py --pair llama   # offline, $0; ~550 MB data, not redistributed
 ```
 
 ## Conventions
