@@ -334,13 +334,17 @@ by the same person, so I also had the small model rewrite fresh questions in
 two styles (neutral and casual chat), keeping only rewrites that preserved
 every number and quoted word
 ([`results/exact_answer_eval_seed17_llm_paraphrase.json`](results/exact_answer_eval_seed17_llm_paraphrase.json)).
-The trigger fired on all 40 rewrites and the policy got 35/40. All five misses
-were arithmetic: told to "Calculate the result of 557 * 65 - ...", the model
-did the sum in its head and wrote a wrong number (the quoted-guess check
-rejected it, but the fallback was wrong too). That is what the direct parser
-fixes: it answers all 8 of those rewrites exactly, checked offline. A full
-re-run of the model-written set with the final prompt is still to do (the free
-tier's daily quota ran out).
+The trigger fired on all 40 rewrites. With the first design the policy got
+35/40, and all five misses were arithmetic: told to "Calculate the result of
+557 * 65 - ...", the model did the sum in its head and wrote a wrong number
+(the quoted-guess check rejected it, but the fallback was wrong too). That is
+what the direct parser fixes.
+
+Re-run with the final design: the small model answering directly got 18/40;
+with the code tool, **40/40**, every question computed rather than guessed.
+Since this set is the one that exposed the mental-arithmetic problem, for its 8
+arithmetic questions the re-run confirms the fix rather than testing it blind;
+the other 32 questions are untouched by that change and scored 32/32.
 
 How the design got there, and why each reported number comes from a seed
 nothing was tuned on: seed 11 exposed `any`/`all` missing from the

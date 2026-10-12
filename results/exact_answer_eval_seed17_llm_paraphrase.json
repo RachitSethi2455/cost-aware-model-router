@@ -17,9 +17,9 @@
       ],
       "small": false,
       "small_reply": "36367",
-      "code_status": "declined",
-      "code_expression": "36337.0",
-      "code": false
+      "code_status": "answered",
+      "code_expression": "557 * 65 - 2484 / 12 + 424",
+      "code": true
     },
     {
       "id": "arithmetic-c1-llm-casual",
@@ -179,9 +179,9 @@
       ],
       "small": false,
       "small_reply": "14220",
-      "code_status": "declined",
-      "code_expression": "14503.0",
-      "code": false
+      "code_status": "answered",
+      "code_expression": "962 * 15 - 3510 / 15 + 138",
+      "code": true
     },
     {
       "id": "arithmetic-c2-llm-casual",
@@ -197,7 +197,7 @@
       "small": false,
       "small_reply": "14231",
       "code_status": "answered",
-      "code_expression": "962 * 15 - 3510 // 15 + 138",
+      "code_expression": "962 * 15 - 3510 / 15 + 138",
       "code": true
     },
     {
@@ -291,7 +291,7 @@
       "small": false,
       "small_reply": "67",
       "code_status": "answered",
-      "code_expression": "sum(int(d) for d in \"1318219254688\")",
+      "code_expression": "sum(int(d) for d in str(1318219254688))",
       "code": true
     },
     {
@@ -339,9 +339,9 @@
       ],
       "small": false,
       "small_reply": "9900",
-      "code_status": "declined",
-      "code_expression": "9912.0",
-      "code": false
+      "code_status": "answered",
+      "code_expression": "442 * 22 - 1656 / 18 + 270",
+      "code": true
     },
     {
       "id": "arithmetic-c3-llm-casual",
@@ -356,9 +356,9 @@
       ],
       "small": true,
       "small_reply": "9902",
-      "code_status": "declined",
-      "code_expression": "9982.0",
-      "code": false
+      "code_status": "answered",
+      "code_expression": "442 * 22 - 1656 / 18 + 270",
+      "code": true
     },
     {
       "id": "letter_count-c3-llm-neutral",
@@ -451,7 +451,7 @@
       "small": false,
       "small_reply": "56",
       "code_status": "answered",
-      "code_expression": "sum(int(d) for d in \"989100163563\")",
+      "code_expression": "sum(int(d) for d in str(989100163563))",
       "code": true
     },
     {
@@ -499,9 +499,9 @@
       ],
       "small": false,
       "small_reply": "5234",
-      "code_status": "declined",
-      "code_expression": "5313.0",
-      "code": false
+      "code_status": "answered",
+      "code_expression": "379 * 14 - 2882 / 11 + 250",
+      "code": true
     },
     {
       "id": "arithmetic-c4-llm-casual",
@@ -516,9 +516,9 @@
       ],
       "small": false,
       "small_reply": "5314",
-      "code_status": "declined",
-      "code_expression": "5303.0",
-      "code": false
+      "code_status": "answered",
+      "code_expression": "379 * 14 - 2882 / 11 + 250",
+      "code": true
     },
     {
       "id": "letter_count-c4-llm-neutral",
@@ -549,7 +549,7 @@
       "small": true,
       "small_reply": "2",
       "code_status": "answered",
-      "code_expression": "'accommodate'.count('a')",
+      "code_expression": "'accommodate'.lower().count('a')",
       "code": true
     },
     {
@@ -611,7 +611,7 @@
       "small": false,
       "small_reply": "64",
       "code_status": "answered",
-      "code_expression": "sum(int(d) for d in \"8633713646701\")",
+      "code_expression": "sum(int(d) for d in str(8633713646701))",
       "code": true
     },
     {
