@@ -2,24 +2,36 @@
 
 [![tests](https://github.com/RachitSethi2455/cost-aware-model-router/actions/workflows/ci.yml/badge.svg)](https://github.com/RachitSethi2455/cost-aware-model-router/actions/workflows/ci.yml)
 
+Most LLM requests don't need the most expensive model. This project routes
+each request to a cheap or an expensive model, computes exact answers in a
+sandbox instead of letting the small model guess, and reports every result
+with its sample size and a 95% interval.
+
 **Live demo: [cost-aware-model-router.vercel.app](https://cost-aware-model-router.vercel.app).**
 Type any question and see which model the router picks, and why. The public
 demo shows routing decisions and recorded answers and makes no model calls,
 so it is free to use.
 
-**At a glance**
+**At a glance** (`python evals/report_stats.py` reproduces every interval)
 
-- **Live result:** on real Gemini models (14 questions), routing cut cost
-  **36–76%** against always using the large model while keeping **93–96%** of
-  its answer quality, and cut median latency from 12.1 s to 5–8 s. The two
-  routers sit at different points on that trade-off; see [Results](#results).
-- **Generalises to new kinds of questions:** 78% routing accuracy on 60
-  labelled queries, and **73%** on question categories never seen in training,
-  where a bag-of-words classifier drops to 60%.
-- **Computes exact answers instead of guessing:** for arithmetic, counting and
-  similar questions the small model writes a Python expression that a
-  sandboxed evaluator computes. On fresh held-out questions this took it
-  from **58% to 100%** correct, including rephrased questions.
+- **Exact answers, computed instead of guessed: the clearest result.** For
+  arithmetic, counting letters, primality and similar questions, the small
+  model writes a Python expression that a sandboxed evaluator computes. On 40
+  fresh held-out questions it went from **23/40 to 40/40** correct (95%
+  intervals 42–71% vs 91–100%), and from 18/40 to 40/40 on rewrites written by
+  a model rather than by me.
+- **Live cost result, on a small sample.** On 14 questions with Gemini
+  models, routing cut cost **36–76%** against always using the large model
+  (intervals 9–64% and 54–91%) while keeping **93–96%** of its answer quality,
+  and cut median latency from 12.1 s to 5–8 s. The caveat matters: a random
+  router sending the same share of questions to the large model would score
+  within those intervals. Fourteen questions can only detect differences of
+  about 25 points, so this sample cannot show the routers beat random routing;
+  see [Results](#results).
+- **Router accuracy:** 78% agreement with my own 60 hand labels (majority-class
+  baseline 55%), and 73% on question categories held out of training, where a
+  bag-of-words classifier drops to 60%. The labels record how hard a question
+  *looks*, not whether the small model actually failed it.
 - **Safety net:** a deterministic check retries a cheap answer on the large
   model when it is empty, refused, cut off, hedging or missing requested code.
   It cannot catch an answer that is confidently wrong, and in the live runs
@@ -102,12 +114,29 @@ Raw results: [`results/benchmark_gemini_free16.json`](results/benchmark_gemini_f
 | All small | 0.893 | $0.086 | 4.5 s | 100% |
 | All large | 1.000 (reference) | $0.843 | 12.1 s | 0% |
 | Heuristic router | 0.929 | $0.199 | 5.0 s | 86% |
-| Classifier router | **0.964** | $0.543 | 8.1 s | 50% |
+| Classifier router | 0.964 | $0.543 | 8.1 s | 50% |
 
-Against always-large, the two routers land at different points on the
-cost/quality curve: the heuristic cut cost **76%** keeping **93%** of quality;
-the classifier cut cost **36%** keeping **96%**. Costs are at paid-tier
-rates; latency is each model call as originally measured.
+The same run with 95% intervals (paired bootstrap over questions) and the
+standard routing references: PGR, the share of the small-to-large quality gap
+a router recovers, and a random router that sends the same share of questions
+to the large model, which scores PGR equal to that share
+([RouteLLM](https://arxiv.org/abs/2406.18665)). Reproduce with
+`python evals/report_stats.py`.
+
+| Router | Quality | Retention | Cost reduction | Random router at same share | Gain over random | PGR (random) |
+|---|---|---|---|---|---|---|
+| Heuristic | 0.929 [0.82, 1.00] | 93% [82, 100] | 76% [54, 91] | 0.908 | +0.020 [−0.015, +0.069] | 0.33 (0.14) |
+| Classifier | 0.964 [0.89, 1.00] | 96% [89, 100] | 36% [9, 64] | 0.946 | +0.018 [−0.036, +0.069] | 0.67 (0.50) |
+
+Read honestly: both routers save real money against always-large, but their
+quality gain over a random router at the same spend is about two points with
+an interval that includes zero. Fourteen questions cannot separate either
+router from random routing, or the two routers from each other; that takes
+hundreds of questions (about 1,000 to detect a three-point difference). Costs
+are at paid-tier rates; latency is each model call as originally measured.
+"Quality" is judged by `gemini-3.5-flash` against the large model's own
+answer, so it measures agreement with the large model, not correctness, and a
+judge from the same family as the graded models may favour them.
 
 What the 14 questions show:
 
@@ -132,9 +161,15 @@ What the 14 questions show:
 
 A first run on 9 of these questions
 ([`results/benchmark_gemini_free_n9.json`](results/benchmark_gemini_free_n9.json))
-had the heuristic ahead; the larger sample separated the two routers.
+had the heuristic ahead and the 14-question run has the classifier ahead on
+quality. That flip is itself the lesson: at this sample size the ordering is
+noise.
 
 **Router accuracy (offline, no API calls; `python evals/analyze_router.py`):**
+
+Accuracy here means agreement with my own 60 difficulty labels (33 "needs the
+large model", 27 "small is enough"; always guessing the majority scores 55%),
+not whether the small model actually succeeded. See limitation 6.
 
 | Model | Accuracy, random splits | Accuracy, unseen category | AUC | Brier (lower is better) |
 |---|---|---|---|---|
@@ -229,6 +264,34 @@ Written up deliberately — these are the interesting parts.
    this; it needs either a semantic signal or an accepted escalation cost.
    The next section measures how often the small model fails these silently,
    and what a rule-based fix does and doesn't catch.
+
+6. **The router is trained on how hard a question looks, not on outcomes.**
+   The 60 labels are my judgement of difficulty, so the 78% accuracy and AUC
+   0.83 measure agreement with me, not how well the router predicts that the
+   small model will fail. Research on model internals finds those are
+   different quantities. Published routers train on outcomes: run both models
+   and record which one succeeded.
+
+7. **The live sample is too small to rank routers.** Fourteen questions give
+   intervals about ±25 points wide, so the routers' gain over random routing
+   at the same cost is not distinguishable from zero. The cause was practical:
+   the Gemini free tier allowed about 20 requests per model per day and often
+   returned 503 overload errors.
+
+8. **The judge is from the same family as the graded models.** A Gemini model
+   grades Gemini answers against a Gemini reference, and LLM judges are known
+   to favour outputs like their own. The exact-answer evaluation avoids this
+   by checking answers with code.
+
+9. **The exact-answer questions are generated shapes, not real traffic.**
+   They test arithmetic, counting, primality, reversal and digit sums in fixed
+   templates and model-written rewrites. Real users phrase things more
+   variously, and mix calculations into longer requests.
+
+10. **Lexical features can be steered.** Adding a phrase like "think step by
+    step" raises the reasoning-marker count and pushes a query toward the
+    large model. Published attacks on routers use exactly this kind of
+    prefix; a per-client cap on escalations would bound the cost.
 
 ## Silent failures: measured, then fixed with a calculator
 
@@ -580,7 +643,23 @@ Delete `data/response_cache.sqlite` to force fresh calls.
 ```
 src/router/     config, features, heuristic, classifier, escalation, risk, tools, pipeline, llm, cache, types
 src/api/        FastAPI service + demo page (static/)
-evals/          dataset.jsonl, judge, benchmark runner, router training, analysis, exact-answer eval
+evals/          dataset.jsonl, judge, benchmark runner, router training, analysis, exact-answer eval, report stats
 tests/          offline unit tests
 scripts/        chart generation
 ```
+
+## How this was built
+
+I built this with an AI coding assistant (Claude Code), which wrote most of
+the code and proposed most of the designs. I chose what to build next,
+reviewed the measurements, and approved what shipped; the commit history
+records each change and why. Every number in this README comes from a script
+in `evals/` and a results file in `results/`, and can be re-run.
+
+Several of the most useful findings came from checking that work rather than
+trusting it: a single cross-validation split that flattered the classifier
+(80% reported, 75.7% on repeated CV), a test whose paraphrases were easier
+than the questions they rephrased, cost accounting that missed hidden
+reasoning tokens (the large model looked about 25x cheaper than it was), and
+a README claim that the calculator's trigger never fired on harmless questions
+(it fired once).

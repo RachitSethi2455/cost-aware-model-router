@@ -86,3 +86,22 @@ def test_paraphrase_check_rejects_rewrites_that_change_the_question():
     arith = "What is 486 * 83 - 4267 / 17 + 449?"
     assert keeps(arith, "Can you work out 486 times 83, minus 4267 over 17, plus 449?")
     assert not keeps(arith, "Can you work out 486 times 38, minus 4267 over 17, plus 449?")
+
+
+def test_wilson_interval_matches_known_values():
+    from report_stats import wilson
+    lo, hi = wilson(40, 40)
+    assert round(lo, 3) == 0.912 and hi == 1.0
+    lo, hi = wilson(23, 40)
+    assert 0.41 < lo < 0.43 and 0.71 < hi < 0.73
+
+
+def test_report_stats_runs_on_committed_results():
+    """The README's intervals must stay reproducible from results/."""
+    from pathlib import Path
+
+    from report_stats import benchmark_report, exact_answer_report
+    results = Path(__file__).resolve().parents[1] / "results"
+    table = benchmark_report(results / "benchmark_gemini_free16.json")
+    assert "n = 14 questions" in table and "| heuristic | 0.929" in table
+    assert "40/40 = 100%" in exact_answer_report(results / "exact_answer_eval_seed19.json")
