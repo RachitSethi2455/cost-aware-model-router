@@ -356,12 +356,14 @@ these questions (`router/tools.py`) the small model does not answer: it writes
 
 - **The evaluator is not `eval`.** It walks the expression's syntax tree and
   allows only a whitelist: literals, arithmetic, comparisons, a few builtins
-  (`len`, `sum`, `any`, `is_prime`, ...), a few string methods, slicing and
-  simple comprehensions. No imports, no attribute access, no lambdas; size
-  limits on powers, ranges, string growth and loop steps. Tests cover classic
-  sandbox escapes (`__import__`, `().__class__.__bases__...`) and resource
-  bombs (`10 ** 10 ** 10`, nested million-step loops), all rejected within
-  a fraction of a second.
+  (`len`, `sum`, `any`, `is_prime`, ...), six string methods, slicing and
+  simple comprehensions. No imports, no attribute access, no lambdas, no
+  string formatting; limits on powers, ranges, string size, loop steps and
+  total allocation. On Linux each evaluation also runs in a separate process
+  with a timeout and memory/CPU limits. A regression suite replays the
+  published 2026 escapes of in-process Python sandboxes (PraisonAI,
+  Crawl4AI, CrewAI) and resource bombs, plus a fuzz test; see
+  [SECURITY.md](SECURITY.md) for the threat model.
 - **It falls back safely.** If the model says `NONE`, writes something
   outside the whitelist, or writes a literal that computes nothing (`'1174'`,
   `'LIFO' == 'LIFO'`), the router answers normally. A wrong guess wrapped in

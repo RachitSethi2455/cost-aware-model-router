@@ -159,6 +159,12 @@ ENABLE_RISK_RULES = os.getenv("ENABLE_RISK_RULES", "0") == "1"
 # See evals/exact_answer_eval.py and the README.
 ENABLE_CODE_TOOL = os.getenv("ENABLE_CODE_TOOL", "1") == "1"
 
+# Where the code tool's evaluator runs: "process" (child process with a
+# timeout and memory/CPU limits), "inline" (in the web worker), or "auto":
+# process on Linux, where this deploys, inline on Windows/macOS, where
+# starting a process takes about a second.
+SANDBOX_ISOLATION = os.getenv("SANDBOX_ISOLATION", "auto")
+
 # Router decision threshold. P(complex) above this routes to LARGE.
 ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 

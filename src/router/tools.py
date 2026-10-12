@@ -20,16 +20,23 @@ from __future__ import annotations
 
 import ast
 import math
+import multiprocessing
 import operator
 import re
+import sys
 from dataclasses import dataclass
 
+from .config import SANDBOX_ISOLATION
 from .types import CallResult
 
 MAX_RANGE = 1_000_000          # size of a range(); built-ins iterate it at C speed
 MAX_STEPS = 100_000            # comprehension steps this evaluator interprets (~0.2 s)
 MAX_POW_BITS = 100_000         # result size of a ** b, in bits
 MAX_STR = 100_000              # characters a string result may reach
+# Total characters/elements across every value one expression produces. Each
+# operation has its own limit, but [[0] * 99999 for i in range(99999)] passes
+# all of them and still asks for ten billion elements.
+MAX_TOTAL_ALLOC = 2_000_000
 
 CODE_PROMPT = """Turn the question into ONE Python expression that computes the exact answer.
 
@@ -71,7 +78,15 @@ def _range(*args):
 
 
 def _join(sep, items):
-    return sep.join(str(i) for i in items)
+    # Check the size while building the parts, not after joining them.
+    parts, total = [], 0
+    for item in items:
+        part = str(item)
+        total += len(part) + len(sep)
+        if total > MAX_STR:
+            raise UnsafeExpression("join result too large")
+        parts.append(part)
+    return sep.join(parts)
 
 
 def _reversed(x):
@@ -104,12 +119,6 @@ _COMPARE = {
 }
 
 
-def _check_size(value):
-    if isinstance(value, str) and len(value) > MAX_STR:
-        raise UnsafeExpression("string too long")
-    return value
-
-
 def _pow(base, exp):
     if not isinstance(exp, (int, float)) or abs(exp) > 10_000:
         raise UnsafeExpression("exponent too large")
@@ -132,12 +141,25 @@ class _Evaluator:
         # Shared across nested comprehensions: two nested loops of a million
         # each must not mean a trillion steps.
         self.steps = 0
+        self.allocated = 0
 
     def run(self, node):
         method = getattr(self, f"_{type(node).__name__}", None)
         if method is None:
             raise UnsafeExpression(f"{type(node).__name__} is not allowed")
-        return _check_size(method(node))
+        return self._account(method(node))
+
+    def _account(self, value):
+        """Size limits on every value produced, per value and in total."""
+        if isinstance(value, (str, list, tuple)):
+            if isinstance(value, str) and len(value) > MAX_STR:
+                raise UnsafeExpression("string too long")
+            # Values are counted each time a node returns them, so this
+            # over-counts; legitimate expressions stay far below the budget.
+            self.allocated += len(value)
+            if self.allocated > MAX_TOTAL_ALLOC:
+                raise UnsafeExpression("expression allocates too much")
+        return value
 
     def _Expression(self, n):
         return self.run(n.body)
@@ -152,6 +174,9 @@ class _Evaluator:
         if op not in _BINOPS:
             raise UnsafeExpression("operator not allowed")
         left, right = self.run(n.left), self.run(n.right)
+        if op is ast.Mod and isinstance(left, str):
+            # printf-style formatting: '%099999999d' % 1 allocates ~100 MB.
+            raise UnsafeExpression("string formatting not allowed")
         if op is ast.Pow:
             return _pow(left, right)
         if op is ast.Mult:
@@ -199,7 +224,8 @@ class _Evaluator:
             if n.id in scope:
                 return scope[n.id]
         if n.id in FUNCTIONS:
-            return FUNCTIONS[n.id]
+            # Only callable by name (see _Call); never a value to pass around.
+            raise UnsafeExpression(f"{n.id} can only be called")
         if n.id in ("True", "False"):
             return n.id == "True"
         raise UnsafeExpression(f"name {n.id!r} is not allowed")
@@ -212,7 +238,8 @@ class _Evaluator:
             return FUNCTIONS[n.func.id](*args)
         if isinstance(n.func, ast.Attribute) and n.func.attr in STRING_METHODS:
             target = self.run(n.func.value)
-            if not isinstance(target, str):
+            # Exact type, not isinstance: a str subclass could override methods.
+            if type(target) is not str:
                 raise UnsafeExpression("methods are only allowed on strings")
             if n.func.attr == "join":
                 return _join(target, *args)
@@ -263,6 +290,84 @@ class _Evaluator:
 
     def _ListComp(self, n):
         return self._comprehension(n.generators, n.elt, list)
+
+
+SANDBOX_TIMEOUT_S = 2.0
+SANDBOX_MEMORY_BYTES = 512 * 1024 * 1024
+
+
+def _evaluate_in_child(expression: str, conn) -> None:
+    """Child-process entry point: apply OS limits, evaluate, report back."""
+    if sys.platform.startswith("linux"):
+        import resource
+        resource.setrlimit(resource.RLIMIT_AS, (SANDBOX_MEMORY_BYTES, SANDBOX_MEMORY_BYTES))
+        cpu = math.ceil(SANDBOX_TIMEOUT_S)
+        resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+    try:
+        conn.send(("ok", safe_eval(expression)))
+    except UnsafeExpression as exc:
+        conn.send(("unsafe", str(exc)))
+    except MemoryError:
+        conn.send(("unsafe", "memory limit reached"))
+    except Exception as exc:  # noqa: BLE001 - anything unexpected is a rejection
+        conn.send(("unsafe", type(exc).__name__))
+    finally:
+        conn.close()
+
+
+def safe_eval_isolated(expression: str, timeout_s: float = SANDBOX_TIMEOUT_S):
+    """safe_eval in a separate process with a wall-clock timeout and, on
+    Linux, address-space and CPU limits.
+
+    In-process evaluation shares the web worker: a slow expression blocks it
+    and Python threads cannot be killed. A child process can be.
+    """
+    methods = multiprocessing.get_all_start_methods()
+    # forkserver forks from a clean single-threaded helper, which is safe
+    # inside a threaded web server; spawn is the portable fallback.
+    if "forkserver" in methods:
+        ctx = multiprocessing.get_context("forkserver")
+        # Keep the helper lean, so the memory limit applies to a small process
+        # rather than to a copy of whatever the web server had imported.
+        ctx.set_forkserver_preload(["router.tools"])
+    else:
+        ctx = multiprocessing.get_context("spawn")
+    receiver, sender = ctx.Pipe(duplex=False)
+    proc = ctx.Process(target=_evaluate_in_child, args=(expression, sender), daemon=True)
+    proc.start()
+    sender.close()
+    try:
+        if not receiver.poll(timeout_s):
+            raise UnsafeExpression("evaluation timed out")
+        try:
+            status, payload = receiver.recv()
+        except EOFError as exc:  # child died: killed by a limit, or crashed
+            raise UnsafeExpression("evaluation process ended without a result") from exc
+    finally:
+        receiver.close()
+        if proc.is_alive():
+            proc.kill()
+        proc.join(timeout=1)
+    if status != "ok":
+        raise UnsafeExpression(payload)
+    return payload
+
+
+def evaluate(expression: str, isolation: str | None = None):
+    """Evaluate with the configured isolation: "process", "inline", or
+    "auto" (process where forkserver exists, i.e. Linux, where this deploys;
+    inline elsewhere, where starting a process costs a second)."""
+    mode = (isolation or SANDBOX_ISOLATION).lower()
+    if mode == "process":
+        return safe_eval_isolated(expression)
+    if mode == "auto" and "forkserver" in multiprocessing.get_all_start_methods():
+        try:
+            return safe_eval_isolated(expression)
+        except OSError:
+            # Some serverless hosts cannot start processes. "auto" keeps the
+            # request working; set SANDBOX_ISOLATION=process to fail instead.
+            pass
+    return safe_eval(expression)
 
 
 def safe_eval(expression: str):
@@ -401,7 +506,7 @@ def solve_with_code(client, spec, question: str, cached_only: bool = False) -> C
     parsed = direct_arithmetic(question)
     if parsed is not None:
         try:
-            value = safe_eval(parsed)
+            value = evaluate(parsed)
         except UnsafeExpression:
             pass  # e.g. unbalanced parentheses: let the model try instead
         else:
@@ -417,7 +522,7 @@ def solve_with_code(client, spec, question: str, cached_only: bool = False) -> C
     if not computes(expression):
         return CodeAnswer("declined", None, expression, call, "no computation")
     try:
-        value = safe_eval(expression)
+        value = evaluate(expression)
     except UnsafeExpression as exc:
         return CodeAnswer("unsafe", None, expression, call, str(exc))
     return CodeAnswer("answered", format_result(value), expression, call)
