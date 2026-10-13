@@ -14,6 +14,7 @@ from exact_match import (  # noqa: E402
     is_correct,
     last_boxed,
     parse_number,
+    parse_options,
 )
 
 
@@ -48,9 +49,25 @@ def test_gold_answers():
     ("The answer is A at first, but the answer is (F)", "F"),
     ("Final answer: I think B is right", None),  # no explicit form: not guessed
     ("no answer here", None),
+    # Forms seen from gpt-oss-20b in the live run:
+    ("The store would prevail. **Answer: (B).**", "B"),
+    ("Hence, the correct choice is **I: 0.7158**.", "I"),
+    ("The answer is ... (I)", "I"),
+    ("B", "B"),
+    ("Answer: I think it is B", None),
 ])
 def test_choice_extraction(response, letter):
     assert extract_answer("choice", response) == letter
+
+
+def test_choice_given_as_option_text():
+    prompt = "Q: ...\nOptions are:\n(A): 30°\n(B): 45°\n(C): 18\n(D): 6%\n(E): 60°\n"
+    options = parse_options(prompt)
+    assert options["B"] == "45°"
+    assert extract_answer("choice", "The answer is 45°.", options) == "B"
+    assert extract_answer("choice", "The answer is 18.0", options) == "C"
+    assert extract_answer("choice", "The answer is 6%", options) == "D"
+    assert extract_answer("choice", "The answer is 50°.", options) is None
 
 
 @pytest.mark.parametrize("response, value", [
@@ -60,6 +77,10 @@ def test_choice_extraction(response, letter):
     ("so we get \\boxed{-3}", Fraction(-3)),
     ("Final answer: x = 4 or x = 5", None),  # two numbers: ambiguous, not guessed
     ("I could not solve it.", None),
+    # Forms seen from gpt-oss-20b in the live run:
+    ("103", Fraction(103)), ("-7/10", Fraction(-7, 10)), ("\\[\n\\frac1{64}\n\\]", Fraction(1, 64)),
+    ("2003_6", Fraction(2003)), ("Working...\nSo the total is 42.", Fraction(42)),
+    ("12 15", None),  # two numbers, not 1215
 ])
 def test_number_extraction(response, value):
     assert extract_answer("number", response) == value

@@ -41,7 +41,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT / "evals"), str(ROOT / "src")]
 
 import numpy as np
-from exact_match import extract_answer, gold_answer
+from exact_match import extract_answer, gold_answer, parse_options
 from report_stats import wilson
 from routing_metrics import paired_bootstrap, summarize
 
@@ -54,6 +54,7 @@ from router.llm import LLMClient
 from router.outcome import OutcomeRouter
 
 RESULTS = ROOT / "results"
+QUESTIONS = ROOT / "evals" / "live_exact_questions.json"  # keys only, no question text
 SYSTEM = ("Work through the question briefly, then end your reply with one final line of the "
           "form 'Final answer: X'. For a multiple-choice question X is the option letter only; "
           "otherwise X is the final value only.")
@@ -70,7 +71,12 @@ class DailyLimit(Exception):
 
 def select_questions(n: int, seed: int = 0) -> list[dict]:
     """n questions, half per source, sampled with a fixed seed, then shuffled
-    so a run stopped by a daily limit still covers both kinds."""
+    so a run stopped by a daily limit still covers both kinds.
+
+    The default set's keys are frozen in QUESTIONS: which MATH problems are
+    eligible depends on which reference answers the grader can read, so
+    without the freeze an improvement to the grader would silently swap the
+    questions out from under a run in progress."""
     import pyarrow.parquet as pq
     from sprout_replay import DATA, DOWNLOAD
 
@@ -78,17 +84,21 @@ def select_questions(n: int, seed: int = 0) -> list[dict]:
     if not path.exists():
         raise SystemExit(f"SPROUT test split missing from {DATA}. Download it:\n{DOWNLOAD}")
     cols = pq.read_table(path, columns=["key", "dataset", "prompt", "golden_answer"]).to_pydict()
-    rows = [dict(zip(cols, values, strict=True)) for values in zip(*cols.values(), strict=True)]
-    rng = random.Random(seed)
-    picked = []
-    for kind, prefix in SOURCES.items():
-        pool = sorted((r for r in rows if r["dataset"].startswith(prefix)
-                       and gold_answer(kind, r["golden_answer"]) is not None), key=lambda r: r["key"])
-        picked += [{"key": r["key"], "source": prefix.split("/")[-1], "kind": kind,
-                    "prompt": r["prompt"], "gold": r["golden_answer"]}
-                   for r in rng.sample(pool, n // 2)]
-    rng.shuffle(picked)
-    return picked
+    rows = {r["key"]: r for r in (dict(zip(cols, values, strict=True))
+                                  for values in zip(*cols.values(), strict=True))}
+    frozen = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else None
+    if frozen and (frozen["n"], frozen["seed"]) == (n, seed):
+        chosen = [(q["key"], q["kind"]) for q in frozen["questions"]]
+    else:
+        rng = random.Random(seed)
+        chosen = []
+        for kind, prefix in SOURCES.items():
+            pool = sorted(key for key, r in rows.items() if r["dataset"].startswith(prefix)
+                          and gold_answer(kind, r["golden_answer"]) is not None)
+            chosen += [(key, kind) for key in rng.sample(pool, n // 2)]
+        rng.shuffle(chosen)
+    return [{"key": key, "source": SOURCES[kind].split("/")[-1], "kind": kind,
+             "prompt": rows[key]["prompt"], "gold": rows[key]["golden_answer"]} for key, kind in chosen]
 
 
 class Pacer:
@@ -156,8 +166,8 @@ def record(q: dict, small, large, routers: dict) -> dict:
            "n_words": extract(q["prompt"]).n_words,
            "scores": {name: router(q["prompt"]) for name, router in routers.items()}}
     for tier, r in (("small", small), ("large", large)):
-        answer = extract_answer(q["kind"], r.text)
-        out[tier] = {"answer": None if answer is None else str(answer), "correct": answer == gold,
+        answer = extract_answer(q["kind"], r.text, parse_options(q["prompt"]))
+        out[tier] = {"answer": None if answer is None else str(answer), "correct": gold is not None and answer == gold,
                      "input_tokens": r.input_tokens, "output_tokens": r.output_tokens,
                      "cost_usd": r.cost_usd, "latency_s": r.latency_s, "stop_reason": r.stop_reason}
     decision = should_escalate(small, q["prompt"])
