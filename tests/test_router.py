@@ -74,6 +74,15 @@ class TestHeuristicRouter:
 class TestEscalation:
     def test_escalates_on_empty(self):
         assert should_escalate(make_result(""), "anything").escalate
+        assert should_escalate(make_result("  \n "), "anything").escalate
+
+    def test_terse_complete_answers_pass(self, monkeypatch):
+        """Reasoning models answer tersely; a length floor escalated every one
+        of them in the live benchmark, making routing cost more than always-large."""
+        import router.escalation
+        monkeypatch.setattr(router.escalation, "MIN_ANSWER_CHARS", 1)  # the default; .env may differ
+        for answer in ("42", "Tokyo.", "Final answer: B"):
+            assert not should_escalate(make_result(answer), "What is 6 * 7?").escalate
 
     def test_escalates_on_refusal(self):
         d = should_escalate(make_result("", stop_reason="refusal"), "q")

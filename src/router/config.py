@@ -103,6 +103,20 @@ PRESETS: dict[str, dict[str, ModelSpec]] = {
         "large": ModelSpec("large", "llama-3.3-70b-versatile", 0.59, 0.79, "groq"),
         "judge": ModelSpec("judge", "llama-3.3-70b-versatile", 0.59, 0.79, "groq"),
     },
+    # Pairs for the free-tier live benchmark (evals/live_exact_benchmark.py).
+    # gpt-oss reasons before answering, and its reasoning tokens are billed as
+    # output. Groq now lists llama-3.1-8b-instant as "contact sales"; $0.05 /
+    # $0.08 is its last published price.
+    "groq-mixed": {
+        "small": ModelSpec("small", "llama-3.1-8b-instant", 0.05, 0.08, "groq"),
+        "large": ModelSpec("large", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
+        "judge": ModelSpec("judge", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
+    },
+    "groq-oss": {
+        "small": ModelSpec("small", "openai/gpt-oss-20b", 0.075, 0.30, "groq"),
+        "large": ModelSpec("large", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
+        "judge": ModelSpec("judge", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
+    },
     "deepseek": {
         "small": ModelSpec("small", "deepseek-chat", 0.27, 1.10, "deepseek"),
         "large": ModelSpec("large", "deepseek-reasoner", 0.55, 2.19, "deepseek"),
@@ -172,8 +186,12 @@ SANDBOX_ISOLATION = os.getenv("SANDBOX_ISOLATION", "auto")
 # (hand-label) router it is a probability.
 ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 
-# Escalation guards applied to the SMALL model's output.
-MIN_ANSWER_CHARS = int(os.getenv("MIN_ANSWER_CHARS", "20"))
+# Escalation guards applied to the SMALL model's output. An answer shorter
+# than MIN_ANSWER_CHARS is escalated; the default 1 means only an empty one.
+# It was 20 until the live benchmark: reasoning models answer tersely
+# ("42", "Final answer: B"), and every such answer was retried on the large
+# model, which made routing cost more than always using it.
+MIN_ANSWER_CHARS = int(os.getenv("MIN_ANSWER_CHARS", "1"))
 MAX_ESCALATIONS = 1  # one retry on the large model, never a loop
 
 # Generation settings, held constant across arms so the benchmark is fair.

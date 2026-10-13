@@ -41,6 +41,8 @@ evals/routing_metrics.py   APGR / CPT / PGR curves, paired bootstrap (numpy only
 evals/sprout_replay.py     offline replay on SPROUT outcomes (needs requirements-eval.txt + data/sprout)
 evals/sprout_unseen_source.py  same, holding out a whole source
 evals/train_outcome_router.py  trains + exports the shipped router; leave-one-pair-out evaluation
+evals/live_exact_benchmark.py  live calls on held-out SPROUT questions, exact-match graded, routers replayed
+evals/exact_match.py       answer extraction + exact grading (letters, numbers as fractions)
 ```
 
 ## Commands
