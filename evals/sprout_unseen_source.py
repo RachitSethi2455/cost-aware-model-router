@@ -29,6 +29,7 @@ from routing_metrics import paired_bootstrap, summarize
 from sklearn.ensemble import HistGradientBoostingRegressor
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sprout_replay import (
+    ADDITIVE_LEAVES,
     KNN_K,
     MAIN_SOURCES,
     MIN_SOURCE_GAP,
@@ -36,6 +37,7 @@ from sprout_replay import (
     RESULTS,
     RIDGE_ALPHA,
     ROOT,
+    additive,
     embeddings,
     knn_scores,
     load_split,
@@ -47,8 +49,8 @@ from sprout_replay import (
 from router.classifier import ClassifierRouter
 from router.features import extract
 
-ROUTERS = ("tfidf_ridge", "minilm_knn", "seven_features_gbm", "seven_features_ridge", "length",
-           "shipped_router")
+ROUTERS = ("tfidf_ridge", "minilm_knn", "seven_features_gbm", "seven_features_additive",
+           "seven_features_ridge", "length", "label_router")
 
 
 def subset(data: dict, mask: np.ndarray) -> dict:
@@ -70,8 +72,10 @@ def route_unseen(train, val, test, feats, emb) -> dict:
         (7, 15, 31), feats["train"], train["gain"], feats["val"], val)
     scores["seven_features_gbm"] = predict(model, feats["test"])
     scores["length"] = feats["test"][:, 0]
-    shipped = ClassifierRouter()
-    scores["shipped_router"] = np.array([shipped.route(p)[1] for p in test["prompt"]])
+    model, _ = tune(additive, ADDITIVE_LEAVES, feats["train"], train["gain"], feats["val"], val)
+    scores["seven_features_additive"] = predict(model, feats["test"])
+    label_router = ClassifierRouter()
+    scores["label_router"] = np.array([label_router.route(p)[1] for p in test["prompt"]])
 
     vectorizer = TfidfVectorizer(ngram_range=(1, 2), min_df=2, max_features=100_000,
                                  sublinear_tf=True)
@@ -79,6 +83,7 @@ def route_unseen(train, val, test, feats, emb) -> dict:
              "val": vectorizer.transform(val["prompt"]), "test": vectorizer.transform(test["prompt"])}
     model, _ = tune(ridge(False), RIDGE_ALPHA, words["train"], train["gain"], words["val"], val)
     scores["tfidf_ridge"] = predict(model, words["test"])
+    del words, vectorizer, model  # free the TF-IDF matrices before the kNN step
 
     k = max(KNN_K, key=lambda k: summarize(knn_scores(emb["train"], train["gain"], emb["val"], k),
                                            val["small"], val["large"])["apgr"])

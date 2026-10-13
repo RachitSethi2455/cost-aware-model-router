@@ -1,4 +1,4 @@
-"""Four-arm benchmark: all-small / all-large / heuristic / classifier.
+"""Benchmark arms: all-small / all-large / heuristic / classifier / outcome router.
 
 Every arm runs through the same RouterPipeline so the comparison is not
 confounded by code-path differences.
@@ -44,7 +44,7 @@ from router.pipeline import RouterPipeline  # noqa: E402
 from router.types import CallResult  # noqa: E402
 
 DATASET = Path(__file__).parent / "dataset.jsonl"
-ARMS = ["always_small", "always_large", "heuristic", "classifier"]
+ARMS = ["always_small", "always_large", "heuristic", "classifier", "outcome"]
 RETRY_DELAYS_S = (5, 15, 30)
 
 # Daily quotas don't recover within a retry window (Gemini free tier:
@@ -222,7 +222,7 @@ def print_table(summaries: list[dict]) -> None:
     if not base or not base["cost_per_100_usd"] or not base["quality"]:
         return
     for s in summaries:
-        if s["arm"] not in ("heuristic", "classifier") or s["quality"] is None:
+        if s["arm"] not in ("heuristic", "classifier", "outcome") or s["quality"] is None:
             continue
         saving = 100 * (1 - s["cost_per_100_usd"] / base["cost_per_100_usd"])
         retention = 100 * s["quality"] / base["quality"]

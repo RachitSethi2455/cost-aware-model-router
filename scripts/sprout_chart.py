@@ -24,10 +24,9 @@ LINES = {  # router: (legend label, colour, line style)
     "minilm_knn": ("MiniLM kNN (gain)", "#188038", "-"),
     "tfidf_ridge": ("TF-IDF ridge (gain)", "#1a73e8", "-"),
     "seven_features_gbm": ("7 features, boosted trees (gain)", "#e37400", "-"),
-    "seven_features_ridge": ("7 features, linear (gain)", "#e37400", "--"),
-    "seven_features_lr": ("7 features, linear (strict label)", "#e37400", ":"),
     "length": ("Prompt length only", "#9aa0a6", "--"),
-    "shipped_router": ("Shipped router (60 hand labels)", "#c5221f", "-."),
+    "label_router": ("First router (60 hand labels)", "#c5221f", "-."),
+    "outcome_router": ("Shipped router (outcomes, 6 pairs)", "#9334e6", "-"),
 }
 
 

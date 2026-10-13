@@ -74,9 +74,10 @@ Firecracker microVM), not an in-process interpreter.
 - `PUBLIC_DEMO=1` disables every endpoint that calls a model (`/route`,
   `/v1/chat/completions`), so the public demo cannot spend an API key.
   `/explain` is rate-limited per client.
-- Known gap: routing uses lexical features, so a client can raise its own
-  share of large-model calls by adding phrases such as "think step by step".
-  A per-client cap on escalations or a daily spend limit would bound this.
+- Known gap: routing uses surface features, so a client can raise its own
+  share of large-model calls by reshaping a question; for the current router,
+  splitting it into more sentences or adding a code block does that. A
+  per-client cap on large-model calls or a daily spend limit would bound this.
 
 ## Reporting
 

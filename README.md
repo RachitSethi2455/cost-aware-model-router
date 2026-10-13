@@ -27,26 +27,26 @@ so it is free to use.
   router sending the same share of questions to the large model would score
   within those intervals. Fourteen questions can only detect differences of
   about 25 points, so this sample cannot show the routers beat random routing;
-  see [Results](#results).
-- **Offline evaluation on 6,637 graded prompts, at no cost.** Replaying
-  routers on SPROUT, a public dataset where 13 models answered the same
-  prompts and every answer was graded, tests routing on outcomes rather than
-  on my labels. The findings are not flattering, and they are reported as
-  measured:
-  - The router as shipped does no better than routing by prompt length.
+  see [Results](#results). These were this project's first routers.
+- **A router trained on outcomes, tested on model pairs it never saw.** The
+  first router learned from my 60 labels of how hard a question *looks*.
+  Replayed on SPROUT, a public dataset where 13 models answered the same
+  44,241 prompts and every answer was graded, it did no better than routing
+  by prompt length. The router now shipped learns from those graded outcomes
+  instead, across six pairs of small and large models. Trained on five pairs
+  and tested on the sixth, it beat the first router on **5 of 6** pairs
+  (mean APGR 0.639 vs 0.597, where random routing scores 0.5), and by more
+  on short questions like this service's. It still sits far below a perfect
+  router, and it lost on the pair where the two models were closest. See
+  [the router now shipped](#the-router-now-shipped-trained-on-outcomes).
+- **What the offline evaluation found** (6,637 held-out prompts, no API
+  cost; [details](#offline-evaluation-on-sprout-6637-graded-prompts-0)):
   - Training on *how much* the large model helps beats training on
     *whether* it helps.
   - On familiar kinds of prompt, a bag-of-words model trained that way is
     the best router: it recovers 80% of the quality gap with 54% of queries
     on the large model, where random routing needs 80%.
   - On a kind of prompt it never saw, no router reliably beats prompt length.
-
-  See [Offline evaluation on SPROUT](#offline-evaluation-on-sprout-6637-graded-prompts-0).
-- **Router accuracy against my labels:** 78% agreement with my own 60 hand
-  labels (majority-class baseline 55%), and 73% on question categories held
-  out of training, where a bag-of-words classifier drops to 60%. The labels
-  record how hard a question *looks*, not whether the small model actually
-  failed it, and on outcomes (above) that accuracy did not carry over.
 - **Safety net:** a deterministic check retries a cheap answer on the large
   model when it is empty, refused, cut off, hedging or missing requested code.
   It cannot catch an answer that is confidently wrong, and in the live runs
@@ -59,10 +59,10 @@ so it is free to use.
   local), response cache, cost accounting, Docker / Render / Vercel configs,
   and an offline test suite plus lint in CI.
 
-Per-request model selection for LLM applications. Classifies incoming query
-complexity, dispatches to a small or large model accordingly, and escalates
-automatically when the small model's answer fails a set of deterministic
-quality checks.
+Per-request model selection for LLM applications. Predicts how much a large
+model would improve the answer to each query, dispatches to a small or large
+model accordingly, and escalates automatically when the small model's answer
+fails a set of deterministic quality checks.
 
 Built to answer a question most LLM projects skip: **how much of your inference
 bill is spent on requests that never needed the expensive model?**
@@ -73,9 +73,9 @@ bill is spent on requests that never needed the expensive model?**
                       └────────┬─────────┘
                                ▼
                       ┌──────────────────┐
-                      │     router       │  heuristic │ logistic regression
+                      │     router       │  additive model, trained on outcomes
                       └────┬────────┬────┘
-                  P<0.5    │        │   P≥0.5
+              score<0.5    │        │   score≥0.5
                            ▼        ▼
               ┌────────────────┐  ┌──────────────────┐
               │  Haiku 4.5     │  │     Opus 5       │
@@ -106,18 +106,35 @@ a misroute costs latency and one extra call, not a wrong answer. This is why
 the router can be aggressive about sending traffic to the small model.
 
 **Seven interpretable features, no embeddings.** An embedding call would cost as
-much as the routing decision saves. Logistic regression over named features
-also means the coefficients are readable — see below. The offline SPROUT
-evaluation later tested this choice on outcomes and did not support it: a
-linear model on these features did no better than prompt length, and a
-local bag-of-words model, which needs no embedding call either, did better
-on familiar prompts.
+much as the routing decision saves. The first router was a logistic
+regression over them, trained on my labels; on recorded outcomes it did no
+better than prompt length. The router now shipped keeps the same features
+but is an *additive* model: boosted trees where each tree looks at one
+feature, so the prediction is a sum of per-feature step functions. That
+keeps every decision exactly explainable (the demo shows each feature's
+share) and ships as an 8 KB JSON file read with plain Python: no pickle and
+no scikit-learn at request time. A local bag-of-words model did better on
+familiar prompts, but fell apart on unfamiliar ones and would ship pieces of
+the training prompts inside its vocabulary.
+
+**Tested on model pairs it never saw.** The service runs on Gemini, which
+SPROUT does not include, so the router will always serve a pair it was not
+trained on. Each of six model pairs is held out in turn and the router
+trained on the other five is tested on it; that is the number that matters
+here. The shipped router is trained on the average gain over all six.
+Pooling turned out to matter little: a router trained on one pair's
+outcomes transferred about as well.
 
 **Types are separated from the SDK** (`router/types.py`), so all deterministic
 logic is importable and testable without the `anthropic` package or an API key.
 CI runs the full offline suite on every push.
 
 ## Results
+
+These live results are for the first two routers: the hand-written
+heuristic and the classifier trained on my labels. The router now shipped
+came later and has not been run live; replayed on the same recorded answers,
+it is the third row of the interval table below.
 
 Four arms, all through identical pipeline code so the comparison isn't
 confounded. **Live run on 14 questions**, `gemini-free` preset (small
@@ -146,6 +163,13 @@ to the large model, which scores PGR equal to that share
 |---|---|---|---|---|---|---|
 | Heuristic | 0.929 [0.82, 1.00] | 93% [82, 100] | 76% [54, 91] | 0.908 | +0.020 [−0.015, +0.069] | 0.33 (0.14) |
 | Classifier | 0.964 [0.89, 1.00] | 96% [89, 100] | 36% [9, 64] | 0.946 | +0.018 [−0.036, +0.069] | 0.67 (0.50) |
+| Outcome router, replayed | 0.929 [0.82, 1.00] | 93% [82, 100] | 82% [62, 92] | 0.901 | +0.028 [0.000, +0.077] | 0.33 (0.07) |
+
+*Replayed* means each question takes the recorded small- or large-model
+answer, whichever the router now picks; no model was called. It sends only
+the bug-fix question (m04) to the large model, one of the three where the
+small model fell short, and keeps the heuristic's quality at a lower cost.
+On 14 questions that is not distinguishable from the others.
 
 Read honestly: both routers save real money against always-large, but their
 quality gain over a random router at the same spend is about two points with
@@ -184,7 +208,13 @@ had the heuristic ahead and the 14-question run has the classifier ahead on
 quality. That flip is itself the lesson: at this sample size the ordering is
 noise.
 
-**Router accuracy (offline, no API calls; `python evals/analyze_router.py`):**
+**The first router's accuracy against my labels (offline, no API calls;
+`python evals/analyze_router.py`):**
+
+This part, down to the feature weights, describes the first router, trained
+on my labels. On recorded outcomes it did no better than prompt length, and
+the outcome-trained router replaced it; it is kept as `mode="classifier"`
+for comparison.
 
 Accuracy here means agreement with my own 60 difficulty labels (33 "needs the
 large model", 27 "small is enough"; always guessing the majority scores 55%),
@@ -241,7 +271,8 @@ The seventh feature, `asks_for_code`, was added after live testing showed
 The +2.5 point gain is within one standard deviation, and the feature was
 designed after seeing the eval set, so treat it as directional.
 
-**Learned feature weights** (positive pushes toward the large model):
+**First router's learned feature weights** (positive pushes toward the large
+model):
 
 | Feature | Coefficient |
 |---|---|
@@ -286,22 +317,26 @@ means the share of large-model calls, not dollars.
 | MiniLM embeddings, 100 nearest neighbours | gain | 0.647 [0.627, 0.667] | 58% |
 | 7 features + boosted trees | gain | 0.640 [0.619, 0.662] | 64% |
 | 7 features + linear (ridge) | gain | 0.584 [0.560, 0.606] | 68% |
+| **Router now shipped** (7 features, additive; [below](#the-router-now-shipped-trained-on-outcomes)) | gain, 6 pairs | 0.636 [0.616, 0.657] | 63% |
 | Prompt length alone | – | 0.574 [0.552, 0.595] | 69% |
-| **Shipped router** (7 features, 60 hand labels) | my labels | 0.569 [0.545, 0.592] | 73% |
+| First router (7 features, 60 hand labels) | my labels | 0.569 [0.545, 0.592] | 73% |
 | MiniLM embeddings, nearest neighbours | strict label | 0.559 [0.538, 0.583] | 72% |
 | 7 features + logistic regression | strict label | 0.530 [0.505, 0.556] | 86% |
 | Random | – | 0.500 | 80% |
 
 *Gain* is the large model's score minus the small model's; *strict label* is
-1 whenever the large model scored higher at all. Full output, including
+1 whenever the large model scored higher at all. The router now shipped was
+added after these comparisons, and its training included this pair's
+training prompts; how it does on a pair it never saw is
+[below](#the-router-now-shipped-trained-on-outcomes). Full output, including
 TF-IDF and MiniLM trained on the strict label: `python evals/sprout_replay.py`.
 
 What it shows:
 
-1. **The shipped router is no better than prompt length on outcomes**
+1. **The first router was no better than prompt length on outcomes**
    (0.569 vs 0.574). Its 78% accuracy measured agreement with my difficulty
-   labels; on what actually happened, it carries about as much signal as
-   counting words. This is limitation 6, now measured.
+   labels; on what actually happened, it carried about as much signal as
+   counting words. That is why it was replaced.
 2. **What a router is trained on matters as much as its features.** The
    strict label treats a 0.1 wobble in the judge's score the same as a wrong
    answer turned right. Training on the size of the gain instead raised the
@@ -332,11 +367,11 @@ outcomes by holding out a whole source: train on every other source, test on
 the held-out one. APGR on the held-out source, with the same router's score
 when that source *was* in training in brackets (intervals are about ±0.04):
 
-| Held-out source (test prompts) | TF-IDF ridge | MiniLM neighbours | 7 features, trees | Prompt length | Shipped router |
-|---|---|---|---|---|---|
-| Chat, OpenHermes (2,912) | 0.590 (0.720) | **0.600** (0.708) | 0.578 (0.627) | 0.554 | 0.467 |
-| MMLU-Pro (1,772) | 0.509 (0.526) | 0.509 (0.523) | **0.533** (0.533) | 0.482 | 0.479 |
-| MATH (1,462) | 0.478 (0.625) | 0.514 (0.587) | 0.544 (0.604) | 0.581 | **0.595** |
+| Held-out source (test prompts) | TF-IDF ridge | MiniLM neighbours | 7 features, trees | 7 features, additive (shipped design) | Prompt length | First router |
+|---|---|---|---|---|---|---|
+| Chat, OpenHermes (2,912) | 0.590 (0.720) | **0.600** (0.708) | 0.578 (0.627) | 0.563 | 0.554 | 0.467 |
+| MMLU-Pro (1,772) | 0.509 (0.526) | 0.509 (0.523) | 0.533 (0.533) | **0.538** | 0.482 | 0.479 |
+| MATH (1,462) | 0.478 (0.625) | 0.514 (0.587) | 0.544 (0.604) | 0.552 | 0.581 | **0.595** |
 
 - Every learned router loses most of its edge on a source it never saw.
   TF-IDF falls furthest: on MATH it drops from 0.625 to 0.478, below random,
@@ -344,8 +379,9 @@ when that source *was* in training in brackets (intervals are about ±0.04):
   it there by +0.066 [+0.016, +0.117], but not on chat (−0.012 [−0.064, +0.042]).
 - No learned router reliably beats prompt length on an unseen source. The
   GPT-4o pair has one source with a usable gap (MMLU-Pro); held out, prompt
-  length did best there (0.648) and TF-IDF beat the seven features by
-  0.101 [0.033, 0.169], so the features' edge on MATH does not generalise.
+  length did best there (0.648), TF-IDF beat the seven features with trees
+  by 0.101 [0.033, 0.169], and the additive version fell below random
+  (0.422), so the features' edge on MATH does not generalise.
 - MMLU-Pro is close to random for every router, seen or unseen: whether the
   8B model knows a multiple-choice fact does not show in the question.
   RouteLLM likewise found its chat-trained routers near random on MMLU.
@@ -354,17 +390,81 @@ when that source *was* in training in brackets (intervals are about ±0.04):
 (0.807 vs 0.848) and the small model scores higher on 9.1% of prompts, so
 intervals are about ±0.06 wide. The order at the top is similar (MiniLM +
 features 0.876, MiniLM ridge 0.867, 7 features with trees 0.839, TF-IDF
-0.826), the shipped router again sits with prompt length (0.772 vs 0.781),
-and most differences are not significant. On two of its three sources the
+0.826), the first router again sits with prompt length (0.772 vs 0.781),
+and most differences are not significant. The router now shipped scores
+0.738 [0.688, 0.791] here, below both, even though its training included
+this pair. On two of its three sources the
 gap is under 0.01, so per-source results are skipped there.
 
-**What this means for the project.** The deployed router has not changed
-yet. These results say the next version should be trained on outcomes, on
-the size of the gain, with a non-linear model or TF-IDF, and, because
-outcomes on one kind of traffic transfer poorly to another, on outcomes
-logged from the traffic it will serve.
+### The router now shipped: trained on outcomes
 
-**Caveats.**
+These results replaced the deployed router. The new one
+(`evals/train_outcome_router.py`, `src/router/outcome.py`) keeps the seven
+features and changes what they are trained on and how:
+
+- **Target:** the gain (large grade minus small grade), averaged over six
+  pairs of small and large models in SPROUT, no model in two pairs.
+- **Model:** boosted trees in which each tree uses one feature, so the
+  prediction is a sum of per-feature step functions and every decision is
+  exactly explainable. The restriction costs little: on the Llama test
+  split it scores 0.636, against 0.640 for unrestricted boosted trees on the
+  same features.
+- **Shipping:** the step functions are an 8 KB JSON file read with plain
+  Python. Before it is written, the export is checked against the trained
+  model on all 44,241 prompts.
+- **Score:** the percentile of a question's predicted gain among SPROUT's
+  validation prompts, so the default threshold of 0.5 sends about half of
+  that traffic to the large model.
+
+**Tested on a pair it never saw.** The service runs on Gemini, which SPROUT
+does not have, so each pair in turn is held out: train on the other five,
+choose settings on validation, test on the held-out pair's 6,637 test
+prompts.
+
+| Held-out pair | Quality gap | Outcome router, pair unseen [95% CI] | Trained on this pair | Trained on Llama 8B→70B only | First router | Prompt length |
+|---|---|---|---|---|---|---|
+| Llama 3.1 8B → 70B | 0.124 | 0.635 [0.615, 0.656] | 0.627 | 0.627 | 0.569 | 0.574 |
+| GPT-4o-mini → GPT-4o | 0.041 | 0.710 [0.659, 0.760] | 0.814 | 0.712 | **0.772** | **0.781** |
+| Granite 3 2B → 8B | 0.105 | 0.588 [0.562, 0.614] | 0.615 | 0.576 | 0.515 | 0.518 |
+| Llama 3.2 3B → 3.3 70B | 0.171 | 0.675 [0.659, 0.693] | 0.672 | 0.666 | 0.602 | 0.615 |
+| Llama 3.2 1B → 3 405B | 0.313 | 0.625 [0.615, 0.638] | 0.636 | 0.631 | 0.580 | 0.598 |
+| Mixtral 8x7B → Claude 3.5 Sonnet | 0.210 | 0.598 [0.585, 0.612] | 0.633 | 0.591 | 0.543 | 0.534 |
+
+- On 5 of 6 unseen pairs it beats the first router, by +0.046 to +0.073
+  APGR with every interval above zero. The mean over the six is 0.639,
+  against 0.597 for the first router and 0.603 for prompt length.
+- The exception is GPT-4o-mini → GPT-4o, the two closest models: it loses
+  there by 0.062 [0.005, 0.129], and prompt length does best.
+- Outcomes from the pair itself help most where pooling misses: GPT-4o
+  (0.814 vs 0.710) and Mixtral → Claude (0.633 vs 0.598). On the other
+  four, the router that never saw the pair is within 0.03 of it.
+- How many pairs it learns from matters little. Trained on Llama 8B → 70B
+  alone, it transfers about as well as trained on five pairs: within 0.012
+  APGR on every other pair. Most of the gain over the first router comes
+  from training on outcomes at all.
+- On short questions like this service's (at most 60 words and 3
+  sentences; 3,385 test prompts), the first router is close to random
+  (0.50–0.53). The outcome router, pair still unseen, beats it by +0.09 to
+  +0.19 on every pair with a usable gap, every interval above zero.
+
+**What it learned.** Mostly sentence count. One-sentence prompts have the
+smallest expected gain from the large model (−0.08 against the average of
+0.16), and three to about thirty sentences the largest (+0.03 to +0.06);
+pasted code adds +0.03; very long prompts, often documents to read, gain
+less. Reasoning words such as "explain" or "compare", which the first
+router relied on most, barely matter, and two or more push slightly toward
+the small model.
+
+**What that means for this service.** SPROUT's prompts are longer than
+typical chat questions, so at the default threshold most one-sentence
+questions now go to the small model: 8 of the 60 eval-set questions go to
+the large model, against 25 with the first router, and 1 of the 14 live
+ones. Lower `ROUTE_THRESHOLD` to send more. It also makes the router easy to
+steer by formatting: adding "Think step by step." to "What is the capital
+of Japan?" raises its score from 0.25 to 0.48, and a greeting plus one more
+sentence sends it to the large model (limitation 10).
+
+**Caveats for this whole section.**
 
 - SPROUT's grades come from an LLM judge (Llama 3.1 70B, per the CARROT
   paper) comparing each answer to a reference. That is the same model as
@@ -420,14 +520,14 @@ Written up deliberately — these are the interesting parts.
    The next section measures how often the small model fails these silently,
    and what a rule-based fix does and doesn't catch.
 
-6. **The router is trained on how hard a question looks, not on outcomes.**
-   The 60 labels are my judgement of difficulty, so the 78% accuracy and AUC
-   0.83 measure agreement with me, not how well the router predicts that the
-   small model will fail. Research on model internals finds those are
-   different quantities. Published routers train on outcomes: run both models
-   and record which one succeeded. Measured on SPROUT's outcomes, the
-   shipped router does no better than prompt length; the deployed model has
-   not yet been retrained on outcomes.
+6. **The router is trained on other models' outcomes, not this service's.**
+   The first router learned from my judgement of how hard 60 questions look;
+   on SPROUT's outcomes it did no better than prompt length, so it was
+   replaced by one trained on graded outcomes. Those outcomes come from six
+   other model pairs, though, not the Gemini pair the service calls. The
+   router was tested on pairs it never saw, but the fix that would settle it
+   is to log both models' answers on a sample of real traffic and train on
+   that.
 
 7. **The live sample is too small to rank routers.** Fourteen questions give
    intervals about ±25 points wide, so the routers' gain over random routing
@@ -445,16 +545,18 @@ Written up deliberately — these are the interesting parts.
    templates and model-written rewrites. Real users phrase things more
    variously, and mix calculations into longer requests.
 
-10. **Lexical features can be steered.** Adding a phrase like "think step by
-    step" raises the reasoning-marker count and pushes a query toward the
-    large model. Published attacks on routers use exactly this kind of
-    prefix; a per-client cap on escalations would bound the cost.
+10. **Surface features can be steered.** The router leans on sentence count,
+    so splitting a question into more sentences or adding a code block
+    pushes it toward the large model: "What is the capital of Japan?" scores
+    0.25, and with "Think step by step." appended, 0.48. Published attacks
+    on routers use exactly this kind of prefix; a per-client cap on
+    large-model calls would bound the cost.
 
 11. **The offline results use other models and an LLM judge.** SPROUT's
-    pairs are Llama 3.1 and GPT-4o, not the Gemini models the service calls,
-    and its grades come from a Llama 3.1 70B judge, the same model as the
-    large side of the main pair. The replay ranks routing methods; it does
-    not predict savings on Gemini.
+    models are Llama, GPT-4o, Granite, Mixtral and Claude, not the Gemini
+    models the service calls, and its grades come from a Llama 3.1 70B
+    judge, the same model as the large side of the main pair. The replay
+    ranks routing methods; it does not predict savings on Gemini.
 
 ## Silent failures: measured, then fixed with a calculator
 
@@ -683,13 +785,17 @@ environment variables take precedence, and the router prints a warning.
 # Offline tests — no API key required
 pytest
 
-# Train the router (offline, uses dataset priors)
+# The shipped router (src/router/outcome_model.json) is committed; to
+# retrain it on SPROUT's outcomes (needs requirements-eval.txt and the data):
+python evals/train_outcome_router.py
+
+# Train the first router, kept as mode="classifier" (offline, uses dataset priors)
 python evals/train_router.py
 
 # Smoke-test the benchmark on 10 queries before spending real money
 python evals/run_benchmark.py --limit 10
 
-# Full benchmark, all four arms
+# Full benchmark, all five arms
 python evals/run_benchmark.py
 
 # Ablation: same run with escalation disabled
@@ -761,9 +867,10 @@ including a multi-turn conversation.
 ### Demo page
 
 `http://localhost:8000/` serves an interactive page: type a question and see
-which model the router picks, the probability against the threshold, and a
-per-feature breakdown of *why* (each feature's push in log-odds, which sums
-exactly to the decision). It only calls `/explain`, so it never spends a token.
+which model the router picks, its score against the threshold, and a
+per-feature breakdown of *why* (each feature's push on the predicted gain,
+which sums exactly to the prediction). It only calls `/explain`, so it never
+spends a token.
 It also shows real answers recorded from live Gemini runs; refresh them with
 `python scripts/export_demo_examples.py` after running the queries live.
 
@@ -773,12 +880,15 @@ Set `PUBLIC_DEMO=1` on any public deployment. It disables `/route` (403) so
 strangers cannot spend your API key, and `/explain` is rate-limited per client
 (`EXPLAIN_RATE_LIMIT`, default 60/min). No API key is needed for the demo.
 
-The Docker image trains the router during the build and listens on `$PORT`:
+The shipped router is a JSON file in `src/router/`, so no deployment trains
+it. The Docker image trains the first router (for `mode="classifier"`)
+during the build and listens on `$PORT`:
 
 - **Vercel:** import the repo as a new project; no settings needed. `app.py`
   is the entrypoint: it turns `PUBLIC_DEMO` on by default and, because the
-  model file is not in git and the filesystem is read-only, trains the router
-  in memory on cold start (60 examples, deterministic, under a second).
+  first router's model file is not in git and the filesystem is read-only,
+  trains that one in memory on cold start (60 examples, deterministic,
+  under a second).
 - **Render:** `render.yaml` is a Blueprint for the free plan with
   `PUBLIC_DEMO=1` set. In the Render dashboard choose New → Blueprint and
   pick this repo. Render sets `PORT` itself.
@@ -811,7 +921,8 @@ Delete `data/response_cache.sqlite` to force fresh calls.
 ## Project layout
 
 ```
-src/router/     config, features, heuristic, classifier, escalation, risk, tools, pipeline, llm, cache, types
+src/router/     config, features, heuristic, outcome (shipped router + outcome_model.json), classifier (first router),
+                escalation, risk, tools, pipeline, llm, cache, types
 src/api/        FastAPI service + demo page (static/)
 evals/          dataset.jsonl, judge, benchmark runner, router training, analysis, exact-answer eval, report stats,
                 routing metrics (APGR/CPT), SPROUT offline replay and unseen-source test
@@ -836,4 +947,8 @@ a README claim that the calculator's trigger never fired on harmless questions
 (it fired once). The biggest came from testing the router on outcomes at
 scale: on SPROUT the router I had shipped did no better than prompt length,
 and on the main model pair, training on the usual strict "large model scored
-higher" label had understated every router I compared.
+higher" label had understated every router I compared. Its replacement
+still loses to it on one of the six model pairs, and checking the new
+router on this project's own questions showed it sends almost every
+one-sentence question to the small model; both are stated next to its
+results.

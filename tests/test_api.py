@@ -149,11 +149,23 @@ class TestDemo:
         save(train(queries, [0, 0, 1, 1]), path)
         monkeypatch.setattr(main, "_classifier", ClassifierRouter(path))
 
-        body = app_client.post("/explain", json={"query": "Write a Python function to sort a list."}).json()
+        body = app_client.post("/explain", json={"query": "Write a Python function to sort a list.",
+                                                 "mode": "classifier"}).json()
         c = body["contributions"]
         logit = c["intercept"] + sum(f["contribution"] for f in c["features"])
         assert body["router"] == "classifier"
         assert abs(1 / (1 + math.exp(-logit)) - body["confidence"]) < 1e-3
+
+    def test_default_router_is_outcome_trained_and_adds_up(self, app_client):
+        from router.outcome import OutcomeRouter
+        q = "Here is code:\n```python\nx = 1\n```\nWhy does it fail? Fix it. Explain each step."
+        body = app_client.post("/explain", json={"query": q}).json()
+        c = body["contributions"]
+        assert body["router"] == "outcome" and c["unit"] == "gain"
+        assert abs(c["intercept"] + sum(f["contribution"] for f in c["features"])
+                   - c["predicted_gain"]) < 1e-9
+        assert abs(OutcomeRouter().score(c["predicted_gain"]) - body["confidence"]) < 1e-4
+        assert body["tier"] == ("large" if body["confidence"] >= body["threshold"] else "small")
 
     def test_public_demo_blocks_model_calls(self, app_client, monkeypatch):
         monkeypatch.setattr(main, "PUBLIC_DEMO", True)
@@ -182,14 +194,15 @@ def test_vercel_entrypoint_is_safe_and_self_training():
         "import app\n"
         "clf = app.main.get_classifier()\n"
         "print(app.main.PUBLIC_DEMO, clf.trained,"
-        " clf.route('Write a Python function to merge two sorted lists.')[0])\n"
+        " clf.route('Write a Python function to merge two sorted lists.')[0],"
+        " app.main.get_outcome_router().trained)\n"
     )
     env = {k: v for k, v in os.environ.items() if k != "PUBLIC_DEMO"}
     env["OPENBLAS_NUM_THREADS"] = "1"
     out = subprocess.run([sys.executable, "-c", script], cwd=root, env=env,
                          capture_output=True, text=True, timeout=120)
     assert out.returncode == 0, out.stderr
-    assert out.stdout.split() == ["True", "True", "large"]
+    assert out.stdout.split() == ["True", "True", "large", "True"]
 
 
 def test_request_threshold_does_not_leak_into_later_requests(monkeypatch):
@@ -265,7 +278,7 @@ class TestOpenAICompatible:
         for model in ("auto", "small", "large"):
             c.post("/v1/chat/completions",
                    json={"model": model, "messages": [{"role": "user", "content": "hi"}]})
-        assert modes == ["classifier", "always_small", "always_large"]
+        assert modes == ["outcome", "always_small", "always_large"]
 
     @pytest.mark.parametrize("payload, code", [
         ({"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}, "model_not_found"),

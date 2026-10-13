@@ -145,3 +145,53 @@ def test_response_cache_survives_concurrent_threads(tmp_path):
         results = list(pool.map(work, range(400)))
     assert results == [str(i) for i in range(400)]
     assert cache.stats() == {"m": 400}
+
+
+class TestOutcomeRouter:
+    """The shipped router: an additive model exported to JSON."""
+
+    QUERIES = ["What is the capital of Japan?", "hi", "x " * 20000,
+               "Explain why. Compare both. List the trade-offs.\n- one\n- two",
+               "Here is code:\n```python\ndef f(): return 1/0\n```\nFind the bug and fix it."]
+
+    def test_contributions_add_up_to_the_prediction(self):
+        from router.outcome import OutcomeRouter
+        router = OutcomeRouter()
+        assert router.trained
+        for q in self.QUERIES:
+            c = router.contributions(q)
+            total = c["intercept"] + sum(f["contribution"] for f in c["features"])
+            assert abs(total - c["predicted_gain"]) < 1e-12
+            assert [f["name"] for f in c["features"]] == FEATURE_NAMES
+
+    def test_score_is_a_monotone_percentile_and_sets_the_tier(self):
+        from router.outcome import OutcomeRouter
+        router = OutcomeRouter()
+        xs = router.scale_gain
+        grid = [xs[0] - 1] + [xs[0] + (xs[-1] - xs[0]) * i / 200 for i in range(201)] + [xs[-1] + 1]
+        scores = [router.score(g) for g in grid]
+        assert all(0.0 <= s <= 1.0 for s in scores)
+        assert all(a <= b for a, b in zip(scores, scores[1:], strict=False))
+        for q in self.QUERIES:
+            for t in (0.0, 0.3, 0.5, 0.9):
+                tier, s = router.route(q, t)
+                assert tier == ("large" if s >= t else "small")
+
+    def test_missing_model_falls_back_to_the_heuristic(self, tmp_path):
+        from router.outcome import OutcomeRouter
+        router = OutcomeRouter(tmp_path / "missing.json")
+        assert router.trained is False and router.contributions("hi") is None
+        assert router.route("What is the capital of Japan?")[0] == "small"
+
+    def test_serving_needs_no_ml_libraries(self):
+        """The export is read with plain Python: no pickle, numpy or sklearn."""
+        import ast
+
+        import router.outcome as module
+        tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))
+        imported = {alias.name.split(".")[0] for node in ast.walk(tree)
+                    if isinstance(node, ast.Import | ast.ImportFrom)
+                    for alias in getattr(node, "names", [])}
+        imported |= {node.module.split(".")[0] for node in ast.walk(tree)
+                     if isinstance(node, ast.ImportFrom) and node.module}
+        assert not imported & {"numpy", "sklearn", "joblib", "pickle"}

@@ -38,7 +38,8 @@ from router import heuristic
 from router.classifier import ClassifierRouter
 from router.config import ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, SMALL
 from router.features import extract
-from router.pipeline import RoutedResponse, RouterMode, RouterPipeline
+from router.outcome import OutcomeRouter
+from router.pipeline import ROUTED_MODES, RoutedResponse, RouterMode, RouterPipeline
 from router.risk import silent_failure_risks
 from router.tools import looks_computable
 
@@ -60,6 +61,7 @@ _pipelines: dict[str, RouterPipeline] = {}
 _counters = Counter()
 _cost_total = {"usd": 0.0}
 _classifier: ClassifierRouter | None = None
+_outcome: OutcomeRouter | None = None
 
 
 def get_pipeline(mode: RouterMode) -> RouterPipeline:
@@ -74,6 +76,19 @@ def get_classifier() -> ClassifierRouter:
     if _classifier is None:
         _classifier = ClassifierRouter()
     return _classifier
+
+
+def get_outcome_router() -> OutcomeRouter:
+    global _outcome
+    if _outcome is None:
+        _outcome = OutcomeRouter()
+    return _outcome
+
+
+def learned_router(mode: str) -> ClassifierRouter | OutcomeRouter | None:
+    if mode == "outcome":
+        return get_outcome_router()
+    return get_classifier() if mode == "classifier" else None
 
 
 class RateLimiter:
@@ -114,7 +129,7 @@ def client_key(request: Request) -> str:
 
 class RouteRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=20000)
-    mode: RouterMode = "classifier"
+    mode: RouterMode = "outcome"
     system: str | None = None
     threshold: float | None = Field(None, ge=0.0, le=1.0)
 
@@ -147,7 +162,8 @@ def demo_page() -> FileResponse:
 def health() -> dict:
     return {
         "status": "ok",
-        "router_trained": get_classifier().trained,
+        "router": "outcome",
+        "router_trained": get_outcome_router().trained,
         "default_threshold": ROUTE_THRESHOLD,
         "public_demo": PUBLIC_DEMO,
     }
@@ -160,7 +176,7 @@ def explain(req: RouteRequest, request: Request) -> dict:
         raise HTTPException(status_code=429, detail="Too many requests; try again in a minute.")
 
     threshold = req.threshold if req.threshold is not None else ROUTE_THRESHOLD
-    clf = get_classifier()
+    router = learned_router(req.mode)
     if req.mode == "always_small":
         tier, confidence = "small", 0.0
     elif req.mode == "always_large":
@@ -168,19 +184,19 @@ def explain(req: RouteRequest, request: Request) -> dict:
     elif req.mode == "heuristic":
         tier, confidence = heuristic.route(req.query, threshold)
     else:
-        tier, confidence = clf.route(req.query, threshold)
+        tier, confidence = router.route(req.query, threshold)
 
     # Same override as RouterPipeline.route: shapes the small model fails
     # silently skip it, whatever the router's probability says.
     risks = silent_failure_risks(req.query)
     overridden_by = []
-    if ENABLE_RISK_RULES and req.mode in ("heuristic", "classifier") and tier == "small" and risks:
+    if ENABLE_RISK_RULES and req.mode in ROUTED_MODES and tier == "small" and risks:
         tier, overridden_by = "large", risks
 
-    # Which router actually decided: the classifier falls back to the
-    # heuristic when no trained artifact is loaded.
+    # Which router actually decided: a learned router falls back to the
+    # heuristic when its trained artifact is missing.
     decided_by = req.mode
-    if req.mode == "classifier" and not clf.trained:
+    if router is not None and not router.trained:
         decided_by = "heuristic_fallback"
 
     return {
@@ -190,7 +206,7 @@ def explain(req: RouteRequest, request: Request) -> dict:
         "features": extract(req.query).to_dict(),
         "mode": req.mode,
         "router": decided_by,
-        "contributions": clf.contributions(req.query) if req.mode == "classifier" else None,
+        "contributions": router.contributions(req.query) if router is not None else None,
         "risk_rules": risks,
         "overridden_by": overridden_by,
         # Whether /route would try the code tool (ENABLE_CODE_TOOL) first.
@@ -277,7 +293,7 @@ def route(req: RouteRequest) -> RouteResponse:
 # the whole conversation.
 
 CHAT_MODELS: dict[str, RouterMode] = {
-    "auto": "classifier",
+    "auto": "outcome",
     "small": "always_small",
     "large": "always_large",
 }

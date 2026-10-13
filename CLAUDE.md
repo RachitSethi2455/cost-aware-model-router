@@ -26,11 +26,12 @@ benchmark run.
 src/router/config.py       model tiers, pricing, PRESETS per provider
 src/router/features.py     7 interpretable features (no embeddings — too costly)
 src/router/heuristic.py    rule baseline
-src/router/classifier.py   logistic regression + heuristic fallback
+src/router/outcome.py      shipped router: additive model read from outcome_model.json (no sklearn)
+src/router/classifier.py   first router: logistic regression on 60 hand labels + heuristic fallback
 src/router/escalation.py   deterministic guards on small-model output
 src/router/risk.py         silent-failure question shapes (opt-in routing override)
 src/router/tools.py        code tool: sandboxed expression evaluator + trigger (on by default)
-src/router/pipeline.py     orchestration; 4 modes for the benchmark arms
+src/router/pipeline.py     orchestration; 5 modes for the benchmark arms (default "outcome")
 src/router/llm.py          caching + cost accounting
 src/router/providers/      vendor adapters behind a Protocol
 src/api/main.py            FastAPI (PUBLIC_DEMO disables /route)
@@ -39,6 +40,7 @@ evals/                     dataset.jsonl, judge, benchmark, training, analysis, 
 evals/routing_metrics.py   APGR / CPT / PGR curves, paired bootstrap (numpy only, tested in CI)
 evals/sprout_replay.py     offline replay on SPROUT outcomes (needs requirements-eval.txt + data/sprout)
 evals/sprout_unseen_source.py  same, holding out a whole source
+evals/train_outcome_router.py  trains + exports the shipped router; leave-one-pair-out evaluation
 ```
 
 ## Commands
@@ -49,6 +51,7 @@ python evals/run_benchmark.py --limit 10   # smoke test, costs money
 python evals/run_benchmark.py              # full run
 uvicorn api.main:app --reload --app-dir src
 python evals/sprout_replay.py --pair llama   # offline, $0; ~550 MB data, not redistributed
+python evals/train_outcome_router.py         # retrains src/router/outcome_model.json (needs the data)
 ```
 
 ## Conventions

@@ -5,9 +5,10 @@ differ from a normal deployment:
 
 - PUBLIC_DEMO defaults to on, so a deployment made without any settings can
   never spend an API key. Set PUBLIC_DEMO=0 in the Vercel project to opt out.
-- The trained model is not in git and the filesystem is read-only, so the
-  router is trained in memory on cold start from evals/dataset.jsonl. It is
-  60 examples and deterministic, so every instance gets the same model.
+- The default router (src/router/outcome_model.json) ships in git and needs
+  no training. The first router, kept for mode="classifier", is not in git
+  and the filesystem is read-only, so it is trained in memory on cold start
+  from evals/dataset.jsonl: 60 examples, deterministic, under a second.
 
 Locally, run `uvicorn api.main:app --app-dir src` as usual.
 """

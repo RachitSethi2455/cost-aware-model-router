@@ -19,11 +19,16 @@ from .config import ENABLE_CODE_TOOL, ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD,
 from .escalation import should_escalate
 from .features import extract
 from .llm import LLMClient
+from .outcome import OutcomeRouter
 from .risk import silent_failure_risks
 from .tools import looks_computable, solve_with_code
 from .types import CallResult
 
-RouterMode = Literal["heuristic", "classifier", "always_small", "always_large"]
+RouterMode = Literal["outcome", "classifier", "heuristic", "always_small", "always_large"]
+# Modes where a router decides per query; the others are fixed-tier baselines.
+# "outcome" (trained on recorded outcomes) is the default; "classifier" is the
+# first router, trained on 60 hand labels, kept for comparison.
+ROUTED_MODES = ("outcome", "classifier", "heuristic")
 
 
 @dataclass
@@ -47,7 +52,7 @@ class RoutedResponse:
 class RouterPipeline:
     def __init__(
         self,
-        mode: RouterMode = "classifier",
+        mode: RouterMode = "outcome",
         client: LLMClient | None = None,
         threshold: float = ROUTE_THRESHOLD,
         enable_escalation: bool = True,
@@ -60,7 +65,8 @@ class RouterPipeline:
         self.enable_risk_rules = enable_risk_rules
         self.enable_code_tool = enable_code_tool
         self.client = client or LLMClient()
-        self._clf = ClassifierRouter() if mode == "classifier" else None
+        routers = {"classifier": ClassifierRouter, "outcome": OutcomeRouter}
+        self._router = routers[mode]() if mode in routers else None
 
     def _decide(self, query: str, threshold: float | None = None) -> tuple[str, float]:
         t = self.threshold if threshold is None else threshold
@@ -70,7 +76,7 @@ class RouterPipeline:
             return "large", 1.0
         if self.mode == "heuristic":
             return heuristic.route(query, t)
-        return self._clf.route(query, t)
+        return self._router.route(query, t)
 
     def route(self, query: str, threshold: float | None = None) -> tuple[str, float, list[str]]:
         """(tier, router confidence, risk rules that overrode a small decision).
@@ -80,7 +86,7 @@ class RouterPipeline:
         are left alone so the benchmark baselines stay pure.
         """
         tier, confidence = self._decide(query, threshold)
-        if self.enable_risk_rules and self.mode in ("heuristic", "classifier") and tier == "small":
+        if self.enable_risk_rules and self.mode in ROUTED_MODES and tier == "small":
             risks = silent_failure_risks(query)
             if risks:
                 return "large", confidence, risks
@@ -109,7 +115,7 @@ class RouterPipeline:
         # can't be lost. Anything but a computed answer falls through to
         # normal routing; the extra call still counts toward cost.
         tool_calls: list[CallResult] = []
-        if (self.enable_code_tool and self.mode in ("heuristic", "classifier")
+        if (self.enable_code_tool and self.mode in ROUTED_MODES
                 and not history and looks_computable(query)):
             code = solve_with_code(self.client, SMALL, query)
             if code.call is not None:

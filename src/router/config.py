@@ -165,7 +165,11 @@ ENABLE_CODE_TOOL = os.getenv("ENABLE_CODE_TOOL", "1") == "1"
 # starting a process takes about a second.
 SANDBOX_ISOLATION = os.getenv("SANDBOX_ISOLATION", "auto")
 
-# Router decision threshold. P(complex) above this routes to LARGE.
+# Routing threshold: a router score at or above this routes to LARGE. For the
+# default outcome router the score is a percentile of SPROUT traffic, so 0.5
+# sends about half of such traffic to the large model; short one-sentence
+# questions score lower, so tune this on your own traffic. For the first
+# (hand-label) router it is a probability.
 ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 
 # Escalation guards applied to the SMALL model's output.

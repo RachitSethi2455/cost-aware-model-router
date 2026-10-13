@@ -22,7 +22,9 @@ Protocol (the one published routers are judged by):
 
 Routers compared:
 - seven_features_*:   this project's 7 features (ridge, gradient boosting, logistic)
-- shipped_router:     the router as deployed (trained on 60 hand labels), unchanged
+- outcome_router:     the shipped router (src/router/outcome_model.json): the seven
+                      features, additive, trained on six pairs' outcomes including this one
+- label_router:       the first router, trained on 60 hand labels, unchanged
 - heuristic, length:  the hand-written rules; prompt length alone
 - tfidf_*:            TF-IDF + ridge / logistic regression
 - minilm_*:           MiniLM sentence embeddings + kNN / ridge / logistic regression
@@ -57,6 +59,7 @@ from sklearn.preprocessing import StandardScaler
 from router import heuristic
 from router.classifier import ClassifierRouter
 from router.features import extract
+from router.outcome import OutcomeRouter
 
 DATA = ROOT / "data" / "sprout"
 RESULTS = ROOT / "results"
@@ -87,7 +90,8 @@ TABLE = [  # (router, training target), in print order
     ("tfidf_ridge", "gain"), ("seven_features_gbm", "gain"), ("seven_features_ridge", "gain"),
     ("minilm_knn_label", "label"), ("minilm_lr", "label"), ("tfidf_lr", "label"),
     ("seven_features_lr", "label"),
-    ("length", "none"), ("heuristic", "none"), ("shipped_router", "60 hand labels"),
+    ("outcome_router", "gain, 6 pairs"), ("length", "none"), ("heuristic", "none"),
+    ("label_router", "60 hand labels"),
 ]
 # Paired comparisons on the same resampled queries: (router, baseline).
 COMPARISONS = [("seven_features_ridge", "minilm_knn"), ("seven_features_ridge", "length"),
@@ -95,27 +99,31 @@ COMPARISONS = [("seven_features_ridge", "minilm_knn"), ("seven_features_ridge", 
                ("seven_features_ridge", "seven_features_lr")]
 
 
-def load_split(split: str, pair: str) -> dict:
-    """Prompts, sources and both models' scores for one split, reading only
-    the needed nested fields (the full files also hold every response)."""
+def load_models(split: str, models: list[str]) -> dict:
+    """Prompts, sources and the given models' scores for one split, reading
+    only the needed nested fields (the full files also hold every response).
+    Prompts missing any of these scores are dropped."""
     missing = [name for name in SPLITS[split] if not (DATA / f"{name}.parquet").exists()]
     if missing:
         raise SystemExit(f"SPROUT files missing from {DATA}. Download them (about 550 MB):\n{DOWNLOAD}")
-    small, large = PAIRS[pair]
-    columns = ["key", "dataset", "prompt", f"{small}.score", f"{large}.score"]
-    parts = [pq.read_table(DATA / f"{name}.parquet", columns=columns) for name in SPLITS[split]]
-    out = {"key": [], "dataset": [], "prompt": [], "small": [], "large": []}
-    for table in parts:
-        cols = table.columns  # nested fields come back named "score", so go by position
-        out["key"] += cols[0].to_pylist()
-        out["dataset"] += cols[1].to_pylist()
-        out["prompt"] += cols[2].to_pylist()
-        out["small"] += cols[3].to_pylist()
-        out["large"] += cols[4].to_pylist()
-    data = {k: np.asarray(v, dtype=float) if k in ("small", "large") else v for k, v in out.items()}
-    keep = ~(np.isnan(data["small"]) | np.isnan(data["large"]))
-    data = {k: (v[keep] if isinstance(v, np.ndarray) else [x for x, m in zip(v, keep, strict=True) if m])
+    columns = ["key", "dataset", "prompt"] + [f"{m}.score" for m in models]
+    out = {"key": [], "dataset": [], "prompt": [], **{m: [] for m in models}}
+    for name in SPLITS[split]:
+        table = pq.read_table(DATA / f"{name}.parquet", columns=columns)
+        # Nested fields come back named "score", so go by position.
+        for key, col in zip(out, table.columns, strict=True):
+            out[key] += col.to_pylist()
+    data = {k: np.asarray(v, dtype=float) if k in models else v for k, v in out.items()}
+    keep = ~np.any([np.isnan(data[m]) for m in models], axis=0)
+    return {k: (v[keep] if isinstance(v, np.ndarray) else [x for x, m in zip(v, keep, strict=True) if m])
             for k, v in data.items()}
+
+
+def load_split(split: str, pair: str) -> dict:
+    """One split for one model pair, with the gain and the strict label."""
+    small, large = PAIRS[pair]
+    data = load_models(split, [small, large])
+    data["small"], data["large"] = data.pop(small), data.pop(large)
     data["gain"] = data["large"] - data["small"]
     data["label"] = (data["gain"] > 0).astype(int)
     return data
@@ -146,7 +154,7 @@ def embeddings(split: str, prompts: list[str]) -> np.ndarray:
     return vectors
 
 
-def knn_scores(train_vecs, train_targets, query_vecs, k: int, chunk: int = 512) -> np.ndarray:
+def knn_scores(train_vecs, train_targets, query_vecs, k: int, chunk: int = 32) -> np.ndarray:
     """Mean target (gain, or large-won label) over the k most similar training prompts."""
     train = train_vecs / np.linalg.norm(train_vecs, axis=1, keepdims=True)
     query = query_vecs / np.linalg.norm(query_vecs, axis=1, keepdims=True)
@@ -184,9 +192,17 @@ def ridge(scale: bool):
     return lambda alpha: make_pipeline(*steps, Ridge(alpha=alpha))
 
 
+def additive(leaves: int) -> HistGradientBoostingRegressor:
+    """Boosted trees where each tree uses one feature, so the model is a sum of
+    per-feature step functions: the shipped router (evals/train_outcome_router.py)."""
+    return HistGradientBoostingRegressor(max_iter=200, learning_rate=0.05, max_leaf_nodes=leaves,
+                                         interaction_cst="no_interactions", random_state=0)
+
+
 LOGISTIC_C = (0.01, 0.1, 1.0, 10.0)
 RIDGE_ALPHA = (0.1, 1.0, 10.0, 100.0, 1000.0)
 KNN_K = (10, 25, 50, 100, 200)
+ADDITIVE_LEAVES = (3, 7, 15, 31)
 
 
 def train_routers(train, val, test, feats, emb) -> tuple[dict, dict]:
@@ -205,8 +221,9 @@ def train_routers(train, val, test, feats, emb) -> tuple[dict, dict]:
                                                      max_leaf_nodes=leaves, random_state=0),
         (7, 15, 31), feats, "gain", "leaves")
 
-    shipped = ClassifierRouter()
-    scores["shipped_router"] = np.array([shipped.route(p)[1] for p in test["prompt"]])
+    label_router, outcome_router = ClassifierRouter(), OutcomeRouter()
+    scores["label_router"] = np.array([label_router.route(p)[1] for p in test["prompt"]])
+    scores["outcome_router"] = np.array([outcome_router.route(p)[1] for p in test["prompt"]])
     scores["heuristic"] = np.array([heuristic.score(extract(p)) for p in test["prompt"]])
     scores["length"] = feats["test"][:, 0]
 
@@ -217,6 +234,7 @@ def train_routers(train, val, test, feats, emb) -> tuple[dict, dict]:
              "test": vectorizer.transform(test["prompt"])}
     fit("tfidf_ridge", ridge(False), RIDGE_ALPHA, words, "gain", "alpha")
     fit("tfidf_lr", logistic(False), LOGISTIC_C, words, "label", "C")
+    del words, vectorizer  # hundreds of MB; the kNN step below needs the room
 
     fit("minilm_ridge", ridge(False), RIDGE_ALPHA, emb, "gain", "alpha")
     fit("minilm_lr", logistic(False), LOGISTIC_C, emb, "label", "C")

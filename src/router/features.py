@@ -1,8 +1,8 @@
 """Query feature extraction.
 
 Seven cheap, interpretable features. Interpretability matters here: when the
-router misroutes, you want to be able to explain *why*, and a
-logistic regression over named features lets you read the coefficients.
+router misroutes, you want to be able to explain *why*, and an additive
+model over named features gives each one an exact contribution.
 
 Deliberately no embeddings — an embedding call would cost as much as the
 routing decision saves.

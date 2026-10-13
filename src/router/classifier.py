@@ -1,6 +1,9 @@
-"""Learned router — logistic regression over the extracted features.
+"""First learned router — logistic regression over the extracted features.
 
-Trained on the eval set's ground-truth labels (see evals/train_router.py).
+Trained on the eval set's 60 hand labels (see evals/train_router.py). On
+recorded outcomes it did no better than prompt length, so the default is now
+router/outcome.py; this one stays as mode="classifier" for comparison and to
+reproduce the recorded live results.
 Falls back to the heuristic when no trained artifact is present, so the API
 works on a clean checkout before you've trained anything.
 """
