@@ -5,6 +5,8 @@ Endpoints:
     POST /explain  - routing decision only, no model call (free, fast)
     GET  /health   - liveness + whether a trained router is loaded
     GET  /stats    - cumulative cost/tier counters for this process
+    GET  /metrics  - Prometheus text format: requests, escalations, cost, tokens,
+                     latency and router-score histograms (router/telemetry.py)
     GET  /         - interactive demo page (uses /explain only)
     POST /v1/chat/completions - OpenAI-compatible; model="auto" routes,
                    "small"/"large" force a tier
@@ -30,17 +32,30 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from router import heuristic
 from router.classifier import ClassifierRouter
-from router.config import ENABLE_RISK_RULES, LARGE, ROUTE_THRESHOLD, SMALL
-from router.features import extract
+from router.config import (
+    DECISION_LOG,
+    ENABLE_RISK_RULES,
+    LARGE,
+    LOG_QUERY_TEXT,
+    ROUTE_THRESHOLD,
+    SHADOW_LOG,
+    SHADOW_MAX_PER_DAY,
+    SHADOW_RATE,
+    SMALL,
+)
+from router.features import FEATURE_SETS, extract
+from router.llm import LLMClient
 from router.outcome import OutcomeRouter
 from router.pipeline import ROUTED_MODES, RoutedResponse, RouterMode, RouterPipeline
 from router.risk import silent_failure_risks
+from router.shadow import ShadowLogger
+from router.telemetry import DecisionLog, Metrics, record_failure, record_routed
 from router.tools import looks_computable
 
 # Read after the router imports so values from .env are already loaded.
@@ -62,6 +77,21 @@ _counters = Counter()
 _cost_total = {"usd": 0.0}
 _classifier: ClassifierRouter | None = None
 _outcome: OutcomeRouter | None = None
+_shadow_client: LLMClient | None = None
+
+METRICS = Metrics()
+DECISIONS = DecisionLog(DECISION_LOG or None, log_query_text=LOG_QUERY_TEXT)
+
+
+def shadow_client() -> LLMClient:
+    global _shadow_client
+    if _shadow_client is None:
+        _shadow_client = LLMClient()
+    return _shadow_client
+
+
+SHADOW = ShadowLogger(shadow_client, rate=SHADOW_RATE, log_path=SHADOW_LOG if SHADOW_RATE > 0 else None,
+                      max_per_day=SHADOW_MAX_PER_DAY, metrics=METRICS)
 
 
 def get_pipeline(mode: RouterMode) -> RouterPipeline:
@@ -188,6 +218,7 @@ def explain(req: RouteRequest, request: Request) -> dict:
 
     # Same override as RouterPipeline.route: shapes the small model fails
     # silently skip it, whatever the router's probability says.
+    METRICS.inc("router_explain_requests_total", tier=tier)
     risks = silent_failure_risks(req.query)
     overridden_by = []
     if ENABLE_RISK_RULES and req.mode in ROUTED_MODES and tier == "small" and risks:
@@ -203,7 +234,9 @@ def explain(req: RouteRequest, request: Request) -> dict:
         "tier": tier,
         "confidence": round(confidence, 4),
         "threshold": threshold,
-        "features": extract(req.query).to_dict(),
+        # The features the deciding router read: v2 for the outcome router.
+        "features": (FEATURE_SETS[router.feature_set][1] if req.mode == "outcome" and router.trained
+                     else extract)(req.query).to_dict(),
         "mode": req.mode,
         "router": decided_by,
         "contributions": router.contributions(req.query) if router is not None else None,
@@ -232,7 +265,23 @@ DEMO_BLOCKED = ("Model calls are disabled on the public demo. Use /explain, "
 
 
 def run_routed(mode: RouterMode, query: str, **run_kwargs) -> RoutedResponse:
-    """Shared by both answering endpoints: demo guard, errors, counters."""
+    """Shared by both answering endpoints: demo guard, errors, counters,
+    metrics, the decision log, and (if enabled) outcome logging."""
+    request_id = uuid.uuid4().hex
+    try:
+        result = _answer(mode, query, **run_kwargs)
+    except RoutingFailed as exc:
+        record_failure(METRICS, DECISIONS, request_id=request_id, mode=mode, status=exc.status,
+                       query=query)
+        raise
+    threshold = run_kwargs.get("threshold")
+    record_routed(METRICS, DECISIONS, request_id=request_id, mode=mode, result=result, query=query,
+                  threshold=ROUTE_THRESHOLD if threshold is None else threshold)
+    SHADOW.consider(query, run_kwargs.get("system"), result, history=run_kwargs.get("history"))
+    return result
+
+
+def _answer(mode: RouterMode, query: str, **run_kwargs) -> RoutedResponse:
     if PUBLIC_DEMO:
         raise RoutingFailed(403, DEMO_BLOCKED)
     try:
@@ -407,6 +456,13 @@ def chat_completions(req: ChatRequest):
             "tool": result.tool,
         },
     }
+
+
+@app.get("/metrics", include_in_schema=False)
+def metrics() -> PlainTextResponse:
+    """Prometheus text format: request, escalation, cost, token and latency
+    counters for this process (router/telemetry.py)."""
+    return PlainTextResponse(METRICS.render(), media_type="text/plain; version=0.0.4")
 
 
 @app.get("/stats")

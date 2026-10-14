@@ -36,3 +36,8 @@ data/fastembed_cache/
 
 # The live benchmark's per-day token usage (local bookkeeping)
 data/live_benchmark_usage.json
+
+# Monitoring and own-traffic logs (local; the shadow log holds question text)
+data/decisions.jsonl
+data/shadow_log.jsonl
+data/shadow_labels.jsonl

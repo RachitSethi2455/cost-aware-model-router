@@ -202,6 +202,19 @@ ROUTE_THRESHOLD = float(os.getenv("ROUTE_THRESHOLD", "0.50"))
 MIN_ANSWER_CHARS = int(os.getenv("MIN_ANSWER_CHARS", "1"))
 MAX_ESCALATIONS = 1  # one retry on the large model, never a loop
 
+# Monitoring (router/telemetry.py): one JSON line per answered request, plus
+# GET /metrics. An empty DECISION_LOG turns the log off. No question text is
+# recorded unless LOG_QUERY_TEXT=1.
+DECISION_LOG = os.getenv("DECISION_LOG", str(DATA_DIR / "decisions.jsonl"))
+LOG_QUERY_TEXT = os.getenv("LOG_QUERY_TEXT", "0") == "1"
+
+# Outcome logging from your own traffic (router/shadow.py). Off by default:
+# each sampled request also pays for a call to the other model, and the log
+# holds question and answer text.
+SHADOW_RATE = float(os.getenv("SHADOW_RATE", "0"))
+SHADOW_MAX_PER_DAY = int(os.getenv("SHADOW_MAX_PER_DAY", "100"))
+SHADOW_LOG = os.getenv("SHADOW_LOG", str(DATA_DIR / "shadow_log.jsonl"))
+
 # Generation settings, held constant across arms so the benchmark is fair.
 # Thinking models (Gemini 3.x, Claude Opus 5) spend hidden reasoning tokens
 # out of this same budget before writing the answer. At 1024, gemini-3.8-flash

@@ -75,9 +75,23 @@ Firecracker microVM), not an in-process interpreter.
   `/v1/chat/completions`), so the public demo cannot spend an API key.
   `/explain` is rate-limited per client.
 - Known gap: routing uses surface features, so a client can raise its own
-  share of large-model calls by reshaping a question; for the current router,
-  splitting it into more sentences or adding a code block does that. A
-  per-client cap on large-model calls or a daily spend limit would bound this.
+  share of large-model calls by reshaping a question. The current router
+  (v2 features) ignores line breaks, answer options and code fences, but
+  added words still move it ("Think step by step." raises a question's
+  score). A per-client cap on large-model calls or a daily spend limit
+  would bound this.
+- Outcome logging (`SHADOW_RATE`) makes a second, paid call for each
+  sampled request; it is off by default and capped by `SHADOW_MAX_PER_DAY`.
+
+## Logged data
+
+- The decision log (`data/decisions.jsonl`) records routing metadata, the
+  question's length and its routing features, not its text, unless
+  `LOG_QUERY_TEXT=1`.
+- The outcome log (`data/shadow_log.jsonl`, only when `SHADOW_RATE` > 0)
+  holds questions and both models' answers. Enable it only where users
+  have agreed to that; both logs stay on local disk and are git-ignored.
+- `/metrics` exposes counts and totals only, no request content.
 
 ## Reporting
 

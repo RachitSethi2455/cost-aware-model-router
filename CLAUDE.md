@@ -24,7 +24,7 @@ benchmark run.
 ## Layout
 ```
 src/router/config.py       model tiers, pricing, PRESETS per provider
-src/router/features.py     7 interpretable features (no embeddings — too costly)
+src/router/features.py     v1: 7 features (heuristic, first router); v2: 9, format-proof (outcome router)
 src/router/heuristic.py    rule baseline
 src/router/outcome.py      shipped router: additive model read from outcome_model.json (no sklearn)
 src/router/classifier.py   first router: logistic regression on 60 hand labels + heuristic fallback
@@ -33,6 +33,8 @@ src/router/risk.py         silent-failure question shapes (opt-in routing overri
 src/router/tools.py        code tool: sandboxed expression evaluator + trigger (on by default)
 src/router/pipeline.py     orchestration; 5 modes for the benchmark arms (default "outcome")
 src/router/llm.py          caching + cost accounting
+src/router/telemetry.py    /metrics counters + per-request decision log (no query text by default)
+src/router/shadow.py       opt-in own-traffic logging: other tier's answer in the background (SHADOW_RATE)
 src/router/providers/      vendor adapters behind a Protocol
 src/api/main.py            FastAPI (PUBLIC_DEMO disables /route)
 src/api/static/            demo page + recorded examples.json
@@ -43,6 +45,8 @@ evals/sprout_unseen_source.py  same, holding out a whole source
 evals/train_outcome_router.py  trains + exports the shipped router; leave-one-pair-out evaluation
 evals/live_exact_benchmark.py  live calls on held-out SPROUT questions, exact-match graded, routers replayed
 evals/exact_match.py       answer extraction + exact grading (letters, numbers as fractions)
+evals/label_shadow.py      grades logged own-traffic pairs offline -> training rows (--own-traffic)
+evals/models/              frozen outcome router v1, kept for comparison
 ```
 
 ## Commands
