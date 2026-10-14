@@ -67,10 +67,12 @@ so it is free to use.
   `model="auto"`.
 - **Engineering:** FastAPI service with a free interactive demo page, 7
   provider presets (Anthropic, OpenAI, Gemini, Groq, DeepSeek, OpenRouter,
-  local), response cache, cost accounting, a Prometheus `/metrics` endpoint
-  and a per-request decision log, opt-in logging of both models' answers to
-  learn from your own traffic, Docker / Render / Vercel configs, and an
-  offline test suite plus lint in CI.
+  local), response cache, cost accounting, streaming on the OpenAI-compatible
+  endpoint, spending guardrails (a per-client cap on large-model calls and a
+  daily spend limit), a Prometheus `/metrics` endpoint and a per-request
+  decision log, opt-in logging of both models' answers to learn from your
+  own traffic, Docker / Render / Vercel configs, and an offline test suite
+  plus lint in CI.
 
 Per-request model selection for LLM applications. Predicts how much a large
 model would improve the answer to each query, dispatches to a small or large
@@ -703,7 +705,8 @@ Written up deliberately — these are the interesting parts.
     LaTeX, and those tricks no longer flip it. It can still be pushed:
     "What is the capital of Japan?" scores 0.04, and with "Think step by
     step." appended, 0.23. Published attacks on routers use exactly this
-    kind of prefix; a per-client cap on large-model calls would bound the
+    kind of prefix; the [spending guardrails](#spending-guardrails) (a
+    per-client cap on large-model calls and a daily spend limit) bound the
     cost.
 
 11. **The offline results use other models and an LLM judge.** SPROUT's
@@ -1014,7 +1017,16 @@ print(r.model_extra["router"])        # tier chosen/served, escalated, confidenc
   conversation, including system messages.
 - `usage` counts every billed call, including an escalation retry.
 - Other OpenAI parameters (`temperature`, ...) are accepted and ignored.
-  Streaming and non-text content return a 400 for now.
+  Non-text content returns a 400.
+- **Streaming** (`stream=True`) sends OpenAI's `chat.completion.chunk`
+  events, ending with a chunk that carries `usage` and the `router` field.
+  The large model, or a small one with no escalation possible, streams
+  token by token. A routed-small answer that could be escalated is checked
+  whole first and then sent, because a streamed answer cannot be taken
+  back. An error before the first token comes back as an ordinary error
+  response; one after it arrives as an error event, which the SDK raises.
+  Tested with the official SDK against gpt-oss-120b on Groq: 79 chunks, the
+  first after 2.3 s.
 - Errors use OpenAI's `{"error": {...}}` shape, so the SDK raises its usual
   exceptions (`BadRequestError`, ...). `GET /v1/models` lists `auto`,
   `small` and `large`.
@@ -1075,6 +1087,26 @@ docker run -p 8000:8000 --env-file .env llm-router
 Responses are cached in SQLite keyed by `(model_id, prompt)`. Re-running the
 benchmark while debugging scoring code costs nothing after the first pass.
 Delete `data/response_cache.sqlite` to force fresh calls.
+
+## Spending guardrails
+
+Two limits bound what the answering endpoints can spend
+(`src/router/budget.py`). Over a limit the service degrades instead of
+refusing: the request is answered by the small model, with no escalation,
+and marked `budget_limited`.
+
+- **`LARGE_CALLS_PER_CLIENT_PER_HOUR`** (default 100): once a client has
+  used this many large-model calls, routed or escalated, in the past hour,
+  its requests stay on the small model until the window frees up. Routing
+  reads surface features, so this is what stops one client from steering
+  everything to the expensive model (limitation 10).
+- **`DAILY_SPEND_LIMIT_USD`** (default 10): once the service has spent this
+  much today, every request stays on the small model until midnight.
+- `0` turns a limit off.
+- Clients are told apart by address; behind an authenticating gateway you
+  would key them by API key.
+- The state is in memory per process. `/health` reports today's spend, and
+  `/metrics` counts limited requests by reason.
 
 ## Monitoring
 

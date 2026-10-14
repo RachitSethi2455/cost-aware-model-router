@@ -24,6 +24,8 @@ Error contract for /route:
 
 from __future__ import annotations
 
+import itertools
+import json
 import os
 import time
 import uuid
@@ -32,16 +34,19 @@ from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from router import heuristic
+from router.budget import SpendGuard
 from router.classifier import ClassifierRouter
 from router.config import (
+    DAILY_SPEND_LIMIT_USD,
     DECISION_LOG,
     ENABLE_RISK_RULES,
     LARGE,
+    LARGE_CALLS_PER_CLIENT_PER_HOUR,
     LOG_QUERY_TEXT,
     ROUTE_THRESHOLD,
     SHADOW_LOG,
@@ -90,6 +95,7 @@ def shadow_client() -> LLMClient:
     return _shadow_client
 
 
+GUARD = SpendGuard(LARGE_CALLS_PER_CLIENT_PER_HOUR, DAILY_SPEND_LIMIT_USD)
 SHADOW = ShadowLogger(shadow_client, rate=SHADOW_RATE, log_path=SHADOW_LOG if SHADOW_RATE > 0 else None,
                       max_per_day=SHADOW_MAX_PER_DAY, metrics=METRICS)
 
@@ -181,6 +187,8 @@ class RouteResponse(BaseModel):
     risk_override: list[str] = []
     # Set when the answer was computed by code: {"expression", "answer"}.
     tool: dict | None = None
+    # A spending guardrail kept this request on the small model (router/budget.py).
+    budget_limited: bool = False
 
 
 @app.get("/", include_in_schema=False)
@@ -196,6 +204,7 @@ def health() -> dict:
         "router_trained": get_outcome_router().trained,
         "default_threshold": ROUTE_THRESHOLD,
         "public_demo": PUBLIC_DEMO,
+        "budget": GUARD.status(),
     }
 
 
@@ -264,57 +273,114 @@ DEMO_BLOCKED = ("Model calls are disabled on the public demo. Use /explain, "
                 "or run the project locally with your own API key.")
 
 
-def run_routed(mode: RouterMode, query: str, **run_kwargs) -> RoutedResponse:
-    """Shared by both answering endpoints: demo guard, errors, counters,
-    metrics, the decision log, and (if enabled) outcome logging."""
-    request_id = uuid.uuid4().hex
+def run_routed(mode: RouterMode, query: str, client: str = "local", **run_kwargs) -> RoutedResponse:
+    """Shared by both answering endpoints: demo guard, spending guardrails,
+    errors, counters, metrics, the decision log, and (if enabled) outcome
+    logging."""
+    request_id, limit = uuid.uuid4().hex, _apply_guard(client, run_kwargs)
     try:
-        result = _answer(mode, query, **run_kwargs)
+        if PUBLIC_DEMO:
+            raise RoutingFailed(403, DEMO_BLOCKED)
+        try:
+            result = get_pipeline(mode).run(query, **run_kwargs)
+        except RuntimeError as exc:
+            # Raised while building a provider client, before any model call.
+            # This is a configuration problem, not a server crash.
+            raise RoutingFailed(503, str(exc)) from exc
+        if failure := _failed_call(result):
+            raise failure
     except RoutingFailed as exc:
         record_failure(METRICS, DECISIONS, request_id=request_id, mode=mode, status=exc.status,
                        query=query)
         raise
-    threshold = run_kwargs.get("threshold")
-    record_routed(METRICS, DECISIONS, request_id=request_id, mode=mode, result=result, query=query,
-                  threshold=ROUTE_THRESHOLD if threshold is None else threshold)
-    SHADOW.consider(query, run_kwargs.get("system"), result, history=run_kwargs.get("history"))
+    _book(mode, query, client, request_id, limit, result, run_kwargs)
     return result
 
 
-def _answer(mode: RouterMode, query: str, **run_kwargs) -> RoutedResponse:
-    if PUBLIC_DEMO:
-        raise RoutingFailed(403, DEMO_BLOCKED)
-    try:
-        result = get_pipeline(mode).run(query, **run_kwargs)
-    except RuntimeError as exc:
-        # Raised while building a provider client, before any model call.
-        # This is a configuration problem, not a server crash.
-        raise RoutingFailed(503, str(exc)) from exc
+def stream_routed(mode: RouterMode, query: str, client: str = "local", **run_kwargs):
+    """Streaming counterpart of run_routed: returns the pipeline's events.
 
+    It runs until the first piece of the answer (or the result) first, so a
+    failure known by then (no key, provider error, public demo) still comes
+    back as an ordinary error response rather than a broken stream. A failure
+    after that arrives as an ("error", RoutingFailed) event."""
+    request_id, limit = uuid.uuid4().hex, _apply_guard(client, run_kwargs)
+    try:
+        if PUBLIC_DEMO:
+            raise RoutingFailed(403, DEMO_BLOCKED)
+        events, head = get_pipeline(mode).stream(query, **run_kwargs), []
+        try:
+            for event in events:
+                head.append(event)
+                if event[0] in ("delta", "result"):
+                    break
+        except RuntimeError as exc:
+            raise RoutingFailed(503, str(exc)) from exc
+        if head and head[-1][0] == "result" and (failure := _failed_call(head[-1][1])):
+            raise failure
+    except RoutingFailed as exc:
+        record_failure(METRICS, DECISIONS, request_id=request_id, mode=mode, status=exc.status,
+                       query=query)
+        raise
+
+    def rest():
+        for kind, payload in itertools.chain(head, events):
+            if kind == "result":
+                if failure := _failed_call(payload):
+                    record_failure(METRICS, DECISIONS, request_id=request_id, mode=mode, status=502,
+                                   query=query)
+                    yield "error", failure
+                    return
+                _book(mode, query, client, request_id, limit, payload, run_kwargs)
+            yield kind, payload
+    return rest()
+
+
+def _apply_guard(client: str, run_kwargs: dict) -> str | None:
+    """Keep this request off the large model if a spending limit applies."""
+    limit = GUARD.check(client)
+    if limit:
+        run_kwargs["allow_large"] = False
+        METRICS.inc("router_budget_limited_total", reason=limit)
+    return limit
+
+
+def _failed_call(result: RoutedResponse) -> RoutingFailed | None:
     # The final call is the one whose answer we would return. If it failed
     # (and escalation could not rescue it), returning 200 with an empty answer
     # would hide the failure from the caller. A calculator answer parsed
     # straight from the question has no model call at all.
     final = result.calls[-1] if result.calls else None
-    if final is not None and final.error:
-        raise RoutingFailed(502, "Model provider call failed.", {
-            "message": "Model provider call failed.",
-            "model_id": final.model_id,
-            "error": final.error,
-            "escalated": result.escalated,
-        })
+    if final is None or not final.error:
+        return None
+    return RoutingFailed(502, "Model provider call failed.", {
+        "message": "Model provider call failed.",
+        "model_id": final.model_id,
+        "error": final.error,
+        "escalated": result.escalated,
+    })
 
+
+def _book(mode, query, client, request_id, limit, result, run_kwargs) -> None:
+    """Counters, guardrail spend, metrics, decision log and outcome logging
+    for an answered request."""
     _counters[result.tier_served] += 1
     if result.escalated:
         _counters["escalations"] += 1
     _cost_total["usd"] += result.total_cost_usd
-    return result
+    GUARD.record(client, result)
+    threshold = run_kwargs.get("threshold")
+    record_routed(METRICS, DECISIONS, request_id=request_id, mode=mode, result=result, query=query,
+                  threshold=ROUTE_THRESHOLD if threshold is None else threshold)
+    if limit is None:  # a second, paid call is the last thing to make over a budget
+        SHADOW.consider(query, run_kwargs.get("system"), result, history=run_kwargs.get("history"))
 
 
 @app.post("/route", response_model=RouteResponse)
-def route(req: RouteRequest) -> RouteResponse:
+def route(req: RouteRequest, request: Request) -> RouteResponse:
     try:
-        result = run_routed(req.mode, req.query, system=req.system, threshold=req.threshold)
+        result = run_routed(req.mode, req.query, client=client_key(request), system=req.system,
+                            threshold=req.threshold)
     except RoutingFailed as exc:
         raise HTTPException(status_code=exc.status, detail=exc.detail) from exc
     final = result.calls[-1] if result.calls else None
@@ -332,6 +398,7 @@ def route(req: RouteRequest) -> RouteResponse:
         truncated=final is not None and final.stop_reason == "max_tokens",
         risk_override=result.risk_override,
         tool=result.tool,
+        budget_limited=result.budget_limited,
     )
 
 
@@ -394,10 +461,7 @@ def list_models() -> dict:
 
 
 @app.post("/v1/chat/completions")
-def chat_completions(req: ChatRequest):
-    if req.stream:
-        return openai_error(400, "Streaming is not supported yet; send stream=false.",
-                            "stream_unsupported")
+def chat_completions(req: ChatRequest, request: Request):
     mode = CHAT_MODELS.get(req.model)
     if mode is None:
         return openai_error(400, f"Unknown model {req.model!r}. Use one of: "
@@ -414,20 +478,19 @@ def chat_completions(req: ChatRequest):
     turns = [{"role": m.role, "content": t}
              for m, t in zip(req.messages[:-1], texts[:-1], strict=True)
              if m.role in ("user", "assistant")]
+    kwargs = {"client": client_key(request), "system": system, "history": turns or None,
+              "max_tokens": req.max_completion_tokens or req.max_tokens}
 
     try:
-        result = run_routed(
-            mode, texts[-1], system=system, history=turns or None,
-            max_tokens=req.max_completion_tokens or req.max_tokens,
-        )
+        if req.stream:
+            return StreamingResponse(_sse(stream_routed(mode, texts[-1], **kwargs)),
+                                     media_type="text/event-stream")
+        result = run_routed(mode, texts[-1], **kwargs)
     except RoutingFailed as exc:
-        return openai_error(exc.status, exc.message if exc.status != 502
-                            else f"{exc.message} {exc.detail['error']}")
+        return openai_error(exc.status, _error_message(exc))
 
     # No calls at all when the calculator parsed the question itself.
     final = result.calls[-1] if result.calls else None
-    prompt_tokens = sum(c.input_tokens for c in result.calls)
-    completion_tokens = sum(c.output_tokens for c in result.calls)
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex}",
         "object": "chat.completion",
@@ -436,26 +499,70 @@ def chat_completions(req: ChatRequest):
         "choices": [{
             "index": 0,
             "message": {"role": "assistant", "content": result.answer},
-            "finish_reason": FINISH_REASONS.get(final.stop_reason, "stop") if final else "stop",
+            "finish_reason": _finish_reason(result),
         }],
-        # Billed tokens across every call, including an escalation retry.
-        "usage": {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": prompt_tokens + completion_tokens,
-        },
-        # Extension field; standard clients ignore unknown keys.
-        "router": {
-            "tier_chosen": result.tier_chosen,
-            "tier_served": result.tier_served,
-            "escalated": result.escalated,
-            "escalation_reason": result.escalation_reason,
-            "confidence": round(result.router_confidence, 4),
-            "cost_usd": round(result.total_cost_usd, 6),
-            "risk_override": result.risk_override,
-            "tool": result.tool,
-        },
+        "usage": _usage(result),
+        "router": _router_info(result),
     }
+
+
+def _error_message(exc: RoutingFailed) -> str:
+    return exc.message if exc.status != 502 else f"{exc.message} {exc.detail['error']}"
+
+
+def _finish_reason(result: RoutedResponse) -> str:
+    final = result.calls[-1] if result.calls else None
+    return FINISH_REASONS.get(final.stop_reason, "stop") if final else "stop"
+
+
+def _usage(result: RoutedResponse) -> dict:
+    """Billed tokens across every call, including an escalation retry."""
+    prompt_tokens = sum(c.input_tokens for c in result.calls)
+    completion_tokens = sum(c.output_tokens for c in result.calls)
+    return {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens,
+            "total_tokens": prompt_tokens + completion_tokens}
+
+
+def _router_info(result: RoutedResponse) -> dict:
+    """Extension field; standard clients ignore unknown keys."""
+    return {
+        "tier_chosen": result.tier_chosen,
+        "tier_served": result.tier_served,
+        "escalated": result.escalated,
+        "escalation_reason": result.escalation_reason,
+        "confidence": round(result.router_confidence, 4),
+        "cost_usd": round(result.total_cost_usd, 6),
+        "risk_override": result.risk_override,
+        "tool": result.tool,
+        "budget_limited": result.budget_limited,
+    }
+
+
+def _sse(events):
+    """OpenAI's chat.completion.chunk stream: a role chunk when the answering
+    model is known, content chunks, a final chunk with finish_reason, usage and
+    the router extension, then [DONE]. A failure after the first token is sent
+    as an error event, which the OpenAI SDK raises."""
+    stream_id, created, model = f"chatcmpl-{uuid.uuid4().hex}", int(time.time()), "auto"
+
+    def chunk(delta: dict, finish: str | None = None, **extra) -> str:
+        body = {"id": stream_id, "object": "chat.completion.chunk", "created": created, "model": model,
+                "choices": [{"index": 0, "delta": delta, "finish_reason": finish}], **extra}
+        return f"data: {json.dumps(body)}\n\n"
+
+    for kind, payload in events:
+        if kind == "start":
+            model = payload["model_id"]
+            yield chunk({"role": "assistant", "content": ""})
+        elif kind == "delta":
+            yield chunk({"content": payload})
+        elif kind == "error":
+            error = {"message": _error_message(payload), "type": "api_error", "code": None}
+            yield f"data: {json.dumps({'error': error})}\n\n"
+            return
+        elif kind == "result":
+            yield chunk({}, _finish_reason(payload), usage=_usage(payload), router=_router_info(payload))
+    yield "data: [DONE]\n\n"
 
 
 @app.get("/metrics", include_in_schema=False)

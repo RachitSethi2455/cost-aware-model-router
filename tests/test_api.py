@@ -282,7 +282,6 @@ class TestOpenAICompatible:
 
     @pytest.mark.parametrize("payload, code", [
         ({"model": "gpt-4o", "messages": [{"role": "user", "content": "hi"}]}, "model_not_found"),
-        ({"stream": True, "messages": [{"role": "user", "content": "hi"}]}, "stream_unsupported"),
         ({"messages": [{"role": "user", "content": [{"type": "image_url"}]}]}, "unsupported_content"),
         ({"messages": [{"role": "user", "content": "hi"},
                        {"role": "assistant", "content": "yo"}]}, None),

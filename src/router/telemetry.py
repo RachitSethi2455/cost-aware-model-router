@@ -34,6 +34,7 @@ HELP = {
     "router_explain_requests_total": "Routing decisions served by /explain (no model call).",
     "router_shadow_calls_total": "Background calls to the other tier for outcome logging.",
     "router_shadow_cost_usd_total": "Spend on those background calls, in USD.",
+    "router_budget_limited_total": "Requests kept on the small model by a spending guardrail.",
     "router_request_latency_seconds": "Wall-clock time to answer a request.",
     "router_score": "Router score of answered requests (the tier is large at or above the threshold).",
 }
@@ -137,6 +138,7 @@ def record_routed(metrics: Metrics, log: DecisionLog, *, request_id: str, mode: 
         "tier_chosen": result.tier_chosen, "tier_served": result.tier_served,
         "escalated": result.escalated, "escalation_reason": result.escalation_reason,
         "risk_override": result.risk_override, "code_tool": bool(result.tool),
+        "budget_limited": getattr(result, "budget_limited", False),
         "cost_usd": round(result.total_cost_usd, 8), "latency_s": round(result.total_latency_s, 3),
         "calls": [{"tier": c.tier, "model": c.model_id, "input_tokens": c.input_tokens,
                    "output_tokens": c.output_tokens, "cached": c.cached} for c in result.calls],

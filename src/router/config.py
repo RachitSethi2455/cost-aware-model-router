@@ -208,6 +208,11 @@ MAX_ESCALATIONS = 1  # one retry on the large model, never a loop
 DECISION_LOG = os.getenv("DECISION_LOG", str(DATA_DIR / "decisions.jsonl"))
 LOG_QUERY_TEXT = os.getenv("LOG_QUERY_TEXT", "0") == "1"
 
+# Spending guardrails (router/budget.py); 0 turns one off. Over a limit the
+# service answers with the small model instead of refusing.
+LARGE_CALLS_PER_CLIENT_PER_HOUR = int(os.getenv("LARGE_CALLS_PER_CLIENT_PER_HOUR", "100"))
+DAILY_SPEND_LIMIT_USD = float(os.getenv("DAILY_SPEND_LIMIT_USD", "10"))
+
 # Outcome logging from your own traffic (router/shadow.py). Off by default:
 # each sampled request also pays for a call to the other model, and the log
 # holds question and answer text.

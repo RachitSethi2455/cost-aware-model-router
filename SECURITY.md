@@ -78,8 +78,12 @@ Firecracker microVM), not an in-process interpreter.
   share of large-model calls by reshaping a question. The current router
   (v2 features) ignores line breaks, answer options and code fences, but
   added words still move it ("Think step by step." raises a question's
-  score). A per-client cap on large-model calls or a daily spend limit
-  would bound this.
+  score). Two guardrails bound the cost (`src/router/budget.py`): a
+  per-client cap on large-model calls per hour
+  (`LARGE_CALLS_PER_CLIENT_PER_HOUR`, default 100) and a daily spend limit
+  (`DAILY_SPEND_LIMIT_USD`, default $10). Past either, requests are answered
+  by the small model. Clients are keyed by address, so a client with many
+  addresses can still spread its calls; the daily limit caps the total.
 - Outcome logging (`SHADOW_RATE`) makes a second, paid call for each
   sampled request; it is off by default and capped by `SHADOW_MAX_PER_DAY`.
 

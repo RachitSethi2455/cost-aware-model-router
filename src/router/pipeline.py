@@ -47,6 +47,8 @@ class RoutedResponse:
     risk_override: list[str] = field(default_factory=list)
     # Set when the answer was computed by code: {"expression", "answer"}.
     tool: dict | None = None
+    # A spending guardrail kept this request off the large model (router/budget.py).
+    budget_limited: bool = False
 
 
 class RouterPipeline:
@@ -99,14 +101,44 @@ class RouterPipeline:
         threshold: float | None = None,
         history: list[dict] | None = None,
         max_tokens: int | None = None,
+        allow_large: bool = True,
     ) -> RoutedResponse:
         """threshold overrides the pipeline default for this call only.
+
+        allow_large=False (a spending guardrail is active for this client or
+        the day) serves everything with the small model and skips escalation.
 
         Pipelines are shared across API requests, so a per-request setting
         must never be stored on self.
 
         history: earlier conversation turns. Routing looks at `query` (the
         latest user message) only; both model tiers see the full history.
+        """
+        for kind, payload in self.stream(query, system, threshold, history, max_tokens, allow_large,
+                                         live=False):
+            if kind == "result":
+                return payload
+        raise RuntimeError("the pipeline ended without a result")  # pragma: no cover
+
+    def stream(
+        self,
+        query: str,
+        system: str | None = None,
+        threshold: float | None = None,
+        history: list[dict] | None = None,
+        max_tokens: int | None = None,
+        allow_large: bool = True,
+        live: bool = True,
+    ):
+        """The routing pipeline as events: ("start", {"tier", "model_id"}) when
+        the answering model is known, ("delta", text) pieces of the answer,
+        and finally ("result", RoutedResponse). run() is this with live=False,
+        so streamed and unstreamed requests make the same decisions.
+
+        A routed-small answer that may be escalated is checked whole before
+        any of it is sent, since a streamed answer cannot be taken back; the
+        large model, or a small one with no escalation possible, streams
+        token by token.
         """
         started = time.perf_counter()
 
@@ -122,7 +154,10 @@ class RouterPipeline:
                 tool_calls.append(code.call)
             if code.status == "answered":
                 _, confidence = self._decide(query, threshold)
-                return RoutedResponse(
+                yield "start", {"tier": "small", "model_id": "calculator"}
+                if live:
+                    yield "delta", code.answer
+                yield "result", RoutedResponse(
                     answer=code.answer,
                     tier_chosen="small",
                     tier_served="small",
@@ -135,30 +170,41 @@ class RouterPipeline:
                     features=extract(query).to_dict(),
                     tool={"expression": code.expression, "answer": code.answer},
                 )
+                return
 
         tier, confidence, risks = self.route(query, threshold)
-        spec = TIERS[tier]
+        budget_limited = not allow_large and tier == "large"
+        if budget_limited:
+            tier, risks = "small", []
         gen = {"system": system, "history": history}
         if max_tokens is not None:
             gen["max_tokens"] = max_tokens
 
-        first = self.client.complete(spec, query, **gen)
-        calls = [*tool_calls, first]
+        calls = list(tool_calls)
         escalated = False
         reason = None
-        final = first
-
         # Only a small-model answer is ever escalated; there is no tier above large.
-        if self.enable_escalation and tier == "small":
+        if self.enable_escalation and allow_large and tier == "small":
+            first = self.client.complete(SMALL, query, **gen)
+            calls.append(first)
             decision = should_escalate(first, query)
             if decision.escalate:
-                escalated = True
-                reason = decision.reason
-                retry = self.client.complete(LARGE, query, **gen)
-                calls.append(retry)
-                final = retry
+                escalated, reason = True, decision.reason
+                yield "start", {"tier": "large", "model_id": LARGE.model_id}
+                final = yield from self._call(LARGE, query, gen, live)
+                calls.append(final)
+            else:
+                final = first
+                yield "start", {"tier": "small", "model_id": first.model_id}
+                if live and first.text:
+                    yield "delta", first.text
+        else:
+            spec = TIERS[tier]
+            yield "start", {"tier": tier, "model_id": spec.model_id}
+            final = yield from self._call(spec, query, gen, live)
+            calls.append(final)
 
-        return RoutedResponse(
+        yield "result", RoutedResponse(
             answer=final.text,
             tier_chosen=tier,
             tier_served=final.tier,
@@ -170,4 +216,18 @@ class RouterPipeline:
             calls=calls,
             features=extract(query).to_dict(),
             risk_override=risks,
+            budget_limited=budget_limited,
         )
+
+    def _call(self, spec, query: str, gen: dict, live: bool):
+        """One model call: streamed as ("delta", text) events when live.
+        Returns the CallResult (use with `yield from`)."""
+        if not live:
+            return self.client.complete(spec, query, **gen)
+        pieces = self.client.stream(spec, query, **gen)
+        while True:
+            try:
+                piece = next(pieces)
+            except StopIteration as done:
+                return done.value
+            yield "delta", piece

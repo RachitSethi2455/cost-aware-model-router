@@ -31,10 +31,11 @@ src/router/classifier.py   first router: logistic regression on 60 hand labels +
 src/router/escalation.py   deterministic guards on small-model output
 src/router/risk.py         silent-failure question shapes (opt-in routing override)
 src/router/tools.py        code tool: sandboxed expression evaluator + trigger (on by default)
-src/router/pipeline.py     orchestration; 5 modes for the benchmark arms (default "outcome")
+src/router/pipeline.py     orchestration; 5 modes (default "outcome"); run() = stream() collected
 src/router/llm.py          caching + cost accounting
 src/router/telemetry.py    /metrics counters + per-request decision log (no query text by default)
 src/router/shadow.py       opt-in own-traffic logging: other tier's answer in the background (SHADOW_RATE)
+src/router/budget.py       spending guardrails: per-client large-call cap, daily spend limit (degrade to small)
 src/router/providers/      vendor adapters behind a Protocol
 src/api/main.py            FastAPI (PUBLIC_DEMO disables /route)
 src/api/static/            demo page + recorded examples.json

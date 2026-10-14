@@ -74,8 +74,36 @@ class LLMClient:
         text, in_tok, out_tok, stop_reason, error = provider.complete(
             spec.model_id, prompt, system, max_tokens, history=history
         )
-        latency = time.perf_counter() - start
+        return self._finish(spec, cache_key, text, in_tok, out_tok, stop_reason, error,
+                            time.perf_counter() - start)
 
+    def stream(
+        self,
+        spec: ModelSpec,
+        prompt: str,
+        system: str | None = None,
+        max_tokens: int = MAX_TOKENS,
+        history: list[dict] | None = None,
+    ):
+        """Yield the answer's text as it arrives, then return the CallResult
+        (use `result = yield from client.stream(...)`). A cached answer, or a
+        provider without streaming, comes back as one piece."""
+        cache_key = self._cache_key(spec, prompt, system, max_tokens, history)
+        hit = self.cached(spec, prompt, system, max_tokens, history)
+        provider = None if hit else get_provider(spec.provider)
+        if hit or not hasattr(provider, "stream"):
+            result = hit or self.complete(spec, prompt, system, max_tokens, history)
+            if result.text:
+                yield result.text
+            return result
+        start = time.perf_counter()
+        text, in_tok, out_tok, stop_reason, error = yield from provider.stream(
+            spec.model_id, prompt, system, max_tokens, history=history
+        )
+        return self._finish(spec, cache_key, text, in_tok, out_tok, stop_reason, error,
+                            time.perf_counter() - start)
+
+    def _finish(self, spec, cache_key, text, in_tok, out_tok, stop_reason, error, latency) -> CallResult:
         result = CallResult(
             text=text,
             model_id=spec.model_id,
