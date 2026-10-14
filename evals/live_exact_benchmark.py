@@ -21,9 +21,13 @@ reached; completed calls stay in the cache, so re-running continues where it
 stopped at no extra cost.
 
 Usage (needs the provider's API key in the environment, e.g. GROQ_API_KEY):
-    python evals/live_exact_benchmark.py --preset groq-mixed --limit 4   # smoke test
-    python evals/live_exact_benchmark.py --preset groq-mixed             # 200 questions
-    python evals/live_exact_benchmark.py --preset groq-mixed --cached-only
+    python evals/live_exact_benchmark.py --preset groq-allam --max-tokens-small 1024 --limit 4
+    python evals/live_exact_benchmark.py --preset groq-allam --max-tokens-small 1024
+    python evals/live_exact_benchmark.py --preset groq-oss
+    python evals/live_exact_benchmark.py --preset groq-oss --cached-only   # re-grade, no calls
+
+Without a key or the cache, recompute every reported number from a results file:
+    python evals/live_exact_benchmark.py --report results/live_exact_groq-allam.json
 """
 
 from __future__ import annotations
@@ -47,7 +51,7 @@ from routing_metrics import paired_bootstrap, summarize
 
 from router import heuristic
 from router.classifier import ClassifierRouter
-from router.config import PRESETS, ROUTE_THRESHOLD
+from router.config import MAX_TOKENS, PRESETS, ROUTE_THRESHOLD
 from router.escalation import should_escalate
 from router.features import extract
 from router.llm import LLMClient
@@ -139,16 +143,16 @@ class DailyBudget:
 
 
 def ask(client: LLMClient, spec, prompt: str, pacer: Pacer, budget: DailyBudget,
-        cached_only: bool, retries: int = 6):
+        cached_only: bool, max_tokens: int = MAX_TOKENS, retries: int = 6):
     """One cached model call. Waits out per-minute limits; raises DailyLimit
     when a daily quota or budget is used up. Returns None in cached-only mode
     on a miss."""
-    if (hit := client.cached(spec, prompt, SYSTEM)) is not None or cached_only:
+    if (hit := client.cached(spec, prompt, SYSTEM, max_tokens)) is not None or cached_only:
         return hit
     for _ in range(retries):
         budget.check(spec.model_id)
         pacer.wait(spec.name)
-        result = client.complete(spec, prompt, system=SYSTEM)
+        result = client.complete(spec, prompt, system=SYSTEM, max_tokens=max_tokens)
         pacer.used(spec.name, result.input_tokens + result.output_tokens)
         budget.add(spec.model_id, result.input_tokens + result.output_tokens)
         if not result.error or ("429" not in result.error and "RateLimit" not in result.error):
@@ -293,9 +297,20 @@ def main() -> None:
     ap.add_argument("--tpm-large", type=int, default=8000, help="tokens per minute for the large model")
     ap.add_argument("--daily-token-budget", type=int, default=150_000,
                     help="stop after this many tokens per model per day (Groq free tier: 200K)")
+    ap.add_argument("--max-tokens-small", type=int, default=MAX_TOKENS,
+                    help="reply cap for the small model (lower it for short-context models)")
     ap.add_argument("--cached-only", action="store_true", help="re-score from the cache, no calls")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--report", type=Path, default=None,
+                    help="recompute the summary from a results file; no calls, no cache, no data")
     args = ap.parse_args()
+
+    if args.report:
+        saved = json.loads(args.report.read_text())
+        print(f"{saved['preset']}: small {saved['models']['small']}, large {saved['models']['large']} "
+              f"({saved['date']})")
+        print_summary(analyze(saved["records"], saved["summary"]["threshold"]), saved["records"])
+        return
 
     specs = PRESETS[args.preset]
     questions = select_questions(args.n, args.seed)[:args.limit]
@@ -311,7 +326,8 @@ def main() -> None:
     records, failures, stopped = [], {"small": 0, "large": 0}, None
     for i, q in enumerate(questions, 1):
         try:
-            small = ask(client, specs["small"], q["prompt"], pacer, budget, args.cached_only)
+            small = ask(client, specs["small"], q["prompt"], pacer, budget, args.cached_only,
+                        args.max_tokens_small)
             large = ask(client, specs["large"], q["prompt"], pacer, budget, args.cached_only)
         except DailyLimit as exc:
             stopped = str(exc)[:300]
@@ -325,11 +341,14 @@ def main() -> None:
             errors = [r.error for r in (small, large) if r is not None and r.error]
             if errors and sum(failures.values()) >= 3 and not records:
                 raise SystemExit(f"The first calls failed; check the model ids and key:\n  {errors[0]}")
+            if errors:  # not cached, so a re-run retries it
+                print(f"[{i}/{len(questions)}] {'/'.join(failed)} call failed: {errors[0][:200]}")
             continue
         records.append(record(q, small, large, routers))
         r = records[-1]
         mark = lambda ok: "right" if ok else "wrong"  # noqa: E731
-        print(f"[{i}/{len(questions)}] {q['kind']:<6} small {mark(r['small']['correct'])}, "
+        print(f"[{i}/{len(questions)} {i / len(questions):4.0%}] {q['kind']:<6} "
+              f"small {mark(r['small']['correct'])}, "
               f"large {mark(r['large']['correct'])}"
               + (f", escalate ({r['small']['escalation_reason']})" if r["small"]["escalate"] else ""))
 

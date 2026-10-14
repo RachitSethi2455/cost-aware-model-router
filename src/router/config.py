@@ -112,6 +112,14 @@ PRESETS: dict[str, dict[str, ModelSpec]] = {
         "large": ModelSpec("large", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
         "judge": ModelSpec("judge", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
     },
+    # allam-2-7b has no published per-token price; priced here like Groq's
+    # last published 8B model. Its context window is 4,096 tokens, so the
+    # live benchmark caps its replies (--max-tokens-small).
+    "groq-allam": {
+        "small": ModelSpec("small", "allam-2-7b", 0.05, 0.08, "groq"),
+        "large": ModelSpec("large", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
+        "judge": ModelSpec("judge", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),
+    },
     "groq-oss": {
         "small": ModelSpec("small", "openai/gpt-oss-20b", 0.075, 0.30, "groq"),
         "large": ModelSpec("large", "openai/gpt-oss-120b", 0.15, 0.60, "groq"),

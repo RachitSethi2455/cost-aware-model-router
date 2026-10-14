@@ -54,6 +54,7 @@ python evals/run_benchmark.py              # full run
 uvicorn api.main:app --reload --app-dir src
 python evals/sprout_replay.py --pair llama   # offline, $0; ~550 MB data, not redistributed
 python evals/train_outcome_router.py         # retrains src/router/outcome_model.json (needs the data)
+python evals/live_exact_benchmark.py --report results/live_exact_groq-allam.json   # live results, no key
 ```
 
 ## Conventions

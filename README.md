@@ -39,6 +39,14 @@ so it is free to use.
   on short questions like this service's. It still sits far below a perfect
   router, and it lost on the pair where the two models were closest. See
   [the router now shipped](#the-router-now-shipped-trained-on-outcomes).
+- **Live, it does not beat random routing.** On 200 held-out questions with
+  real calls and every answer checked by code (no AI grader), with a model
+  pair where routing matters (allam-2-7b 20.5% vs gpt-oss-120b 82.5%), no
+  router did better than random routing at the same spend. The shipped one
+  did 4.8 points worse: it treats each line of a multiple-choice question as
+  a sentence and sends those to the large model, while the large model
+  helped more on maths. The run also caught three bugs, now fixed. See
+  [the live test](#live-test-200-questions-graded-by-exact-match).
 - **What the offline evaluation found** (6,637 held-out prompts, no API
   cost; [details](#offline-evaluation-on-sprout-6637-graded-prompts-0)):
   - Training on *how much* the large model helps beats training on
@@ -489,6 +497,80 @@ python evals/sprout_unseen_source.py --pair llama
 python scripts/sprout_chart.py
 ```
 
+## Live test: 200 questions, graded by exact match
+
+The 14-question Gemini run could not rank routers, and an LLM from the same
+family graded it. This run fixes both. It used 200 questions from SPROUT's
+held-out test split: 100 MMLU-Pro multiple-choice questions and 100 MATH
+problems whose answer is a plain number or fraction. Every answer was checked
+by code (`evals/exact_match.py`), with real calls on Groq's free tier on
+13–14 October 2026. Both models answered every question once; each router was
+then replayed on those answers, applying escalation as the pipeline does.
+`python evals/live_exact_benchmark.py --report results/live_exact_groq-allam.json`
+recomputes every number below from the committed answers, with no API key.
+
+| Model pair | Small model alone | Large model alone | Large right, small wrong | Small right, large wrong |
+|---|---|---|---|---|
+| allam-2-7b → gpt-oss-120b | 20.5% [15.0, 26.5] | 82.5% [77.0, 88.0] | 132 questions | 8 |
+| gpt-oss-20b → gpt-oss-120b | 80.5% [74.5, 86.0] | 82.5% [77.0, 88.0] | 8 questions | 4 |
+
+**allam-2-7b → gpt-oss-120b**, where routing matters:
+
+| Router | Accuracy [95% CI] | Questions answered by the large model | Cost saved vs always-large [95% CI] | Gain over random routing at the same share [95% CI] |
+|---|---|---|---|---|
+| Router now shipped | 61.0% [54.0, 67.5] | 73% | 14% [10, 20] | **−0.048** [−0.075, −0.019] |
+| First router | 67.5% [61.0, 73.5] | 82% | 11% [7, 16] | −0.035 [−0.059, −0.010] |
+| Heuristic | 35.0% [28.5, 41.5] | 28% | 62% [52, 72] | −0.029 [−0.067, +0.007] |
+
+On the routing curve (APGR; random routing scores 0.5), the shipped router
+scores 0.463 [0.427, 0.496], the first router 0.447, the heuristic 0.458 and
+prompt length 0.444. A router that knew the outcomes would score 0.71.
+
+- **No router beats random routing here, and the shipped one does
+  measurably worse.** At the share of questions it sent to the large model,
+  random routing would have scored 4.8 points higher.
+- **The reason is the weakness in limitation 10.** The router counts lines
+  as sentences, so it sent 97 of the 100 multiple-choice questions to the
+  large model (each answer option sits on its own line) and only 47 of the
+  100 maths problems. But the large model helped on 74 maths problems and 58
+  multiple-choice ones, so the formatting cue pointed the wrong way. This is
+  the offline finding seen live: on a kind of prompt it did not learn from,
+  the router does not transfer.
+- **With a small model this weak, the right policy is not to route.** The
+  large model wins on two thirds of the questions.
+
+**gpt-oss-20b → gpt-oss-120b**, two models 2 points apart:
+
+- Every router reaches the large model's 82.5%, while sending 26–82% of
+  questions to it and saving 7–21%.
+- Using the small model alone saves 36% and loses 2 points.
+- The large model was right where the small one was wrong on only 8
+  questions, too few to rank routers (APGR intervals span 0.25–1.10).
+- At Groq's list prices, the 200 questions cost $0.090 always-large and
+  $0.057 always-small.
+
+**What the live test caught, fixed before these numbers:**
+
+1. The escalation check retried every answer under 20 characters. Reasoning
+   models answer tersely ("Final answer: B"), so every cheap answer was
+   retried on the large model, and routing cost more than always using the
+   large one. It now escalates only empty answers.
+2. My grader missed bare answers such as "103". That invented a 14-point
+   gap between gpt-oss-20b and gpt-oss-120b; the real gap is 2 points.
+3. Which maths problems were eligible depended on which reference answers
+   the grader could read. Improving the grader therefore silently swapped
+   questions mid-run. The question list is now frozen
+   (`evals/live_exact_questions.json`).
+
+**Caveats:**
+
+- allam-2-7b has no published price; it is costed like Groq's 8B model.
+  It has a 4K context window, so its replies were capped at 1,024 tokens,
+  and 8 of them were cut off.
+- Each question was asked once, at the default temperature.
+- The question mix is half multiple choice and half maths, not chat
+  traffic.
+
 ## Known limitations
 
 Written up deliberately — these are the interesting parts.
@@ -525,15 +607,17 @@ Written up deliberately — these are the interesting parts.
    on SPROUT's outcomes it did no better than prompt length, so it was
    replaced by one trained on graded outcomes. Those outcomes come from six
    other model pairs, though, not the Gemini pair the service calls. The
-   router was tested on pairs it never saw, but the fix that would settle it
-   is to log both models' answers on a sample of real traffic and train on
-   that.
+   router was tested on pairs it never saw, and in the live test on a pair
+   it never saw, it did worse than random routing. The fix that would settle
+   it is to log both models' answers on a sample of real traffic and train
+   on that.
 
-7. **The live sample is too small to rank routers.** Fourteen questions give
-   intervals about ±25 points wide, so the routers' gain over random routing
-   at the same cost is not distinguishable from zero. The cause was practical:
-   the Gemini free tier allowed about 20 requests per model per day and often
-   returned 503 overload errors.
+7. **The live tests are small and narrow.** The 14-question Gemini run gives
+   intervals about ±25 points wide, so it cannot rank routers; the Gemini
+   free tier allowed about 20 requests per model per day. The 200-question
+   exact-match run can rank routers on a pair with a large gap, but covers
+   two Groq pairs and two kinds of question (multiple choice and maths), not
+   the Gemini pair or chat traffic.
 
 8. **The judge is from the same family as the graded models.** A Gemini model
    grades Gemini answers against a Gemini reference, and LLM judges are known
@@ -550,7 +634,9 @@ Written up deliberately — these are the interesting parts.
     pushes it toward the large model: "What is the capital of Japan?" scores
     0.25, and with "Think step by step." appended, 0.48. Published attacks
     on routers use exactly this kind of prefix; a per-client cap on
-    large-model calls would bound the cost.
+    large-model calls would bound the cost. The same cue misroutes honest
+    traffic: in the live test, answer options on separate lines sent almost
+    every multiple-choice question to the large model.
 
 11. **The offline results use other models and an LLM judge.** SPROUT's
     models are Llama, GPT-4o, Granite, Mixtral and Claude, not the Gemini
@@ -812,6 +898,10 @@ python evals/sprout_replay.py --pair llama
 python evals/sprout_unseen_source.py --pair llama
 python scripts/sprout_chart.py
 
+# Live exact-match test (needs GROQ_API_KEY; free tier, resumes across days)
+python evals/live_exact_benchmark.py --preset groq-allam --max-tokens-small 1024
+python evals/live_exact_benchmark.py --report results/live_exact_groq-allam.json   # no key needed
+
 # Serve
 uvicorn api.main:app --reload --app-dir src
 ```
@@ -951,4 +1041,8 @@ higher" label had understated every router I compared. Its replacement
 still loses to it on one of the six model pairs, and checking the new
 router on this project's own questions showed it sends almost every
 one-sentence question to the small model; both are stated next to its
-results.
+results. The live exact-match test then found that it does not beat random
+routing on a pair it never saw. It also caught three bugs: an escalation
+rule that retried every terse answer, a grader of mine that invented a
+14-point gap, and question selection that silently changed when the grader
+did.
