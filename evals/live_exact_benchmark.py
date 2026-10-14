@@ -53,12 +53,13 @@ from router import heuristic
 from router.classifier import ClassifierRouter
 from router.config import MAX_TOKENS, PRESETS, ROUTE_THRESHOLD
 from router.escalation import should_escalate
-from router.features import extract
+from router.features import extract, extract_v2
 from router.llm import LLMClient
 from router.outcome import OutcomeRouter
 
 RESULTS = ROOT / "results"
 QUESTIONS = ROOT / "evals" / "live_exact_questions.json"  # keys only, no question text
+QUESTIONS_OWN = ROOT / "evals" / "own_traffic_questions.json"
 SYSTEM = ("Work through the question briefly, then end your reply with one final line of the "
           "form 'Final answer: X'. For a multiple-choice question X is the option letter only; "
           "otherwise X is the final value only.")
@@ -73,14 +74,16 @@ class DailyLimit(Exception):
     pass
 
 
-def select_questions(n: int, seed: int = 0) -> list[dict]:
+def select_questions(n: int, seed: int = 0, question_set: str = "live") -> list[dict]:
     """n questions, half per source, sampled with a fixed seed, then shuffled
     so a run stopped by a daily limit still covers both kinds.
 
-    The default set's keys are frozen in QUESTIONS: which MATH problems are
-    eligible depends on which reference answers the grader can read, so
-    without the freeze an improvement to the grader would silently swap the
-    questions out from under a run in progress."""
+    Each set's keys are frozen in a file: which MATH problems are eligible
+    depends on which reference answers the grader can read, so without the
+    freeze an improvement to the grader would silently swap the questions out
+    from under a run in progress. "live" is the 200-question test set; "own"
+    stands in for a service's own traffic (training data for the router) and
+    never overlaps it; it is frozen the first time it is drawn."""
     import pyarrow.parquet as pq
     from sprout_replay import DATA, DOWNLOAD
 
@@ -90,17 +93,24 @@ def select_questions(n: int, seed: int = 0) -> list[dict]:
     cols = pq.read_table(path, columns=["key", "dataset", "prompt", "golden_answer"]).to_pydict()
     rows = {r["key"]: r for r in (dict(zip(cols, values, strict=True))
                                   for values in zip(*cols.values(), strict=True))}
-    frozen = json.loads(QUESTIONS.read_text()) if QUESTIONS.exists() else None
+    frozen_path = QUESTIONS if question_set == "live" else QUESTIONS_OWN
+    frozen = json.loads(frozen_path.read_text()) if frozen_path.exists() else None
     if frozen and (frozen["n"], frozen["seed"]) == (n, seed):
         chosen = [(q["key"], q["kind"]) for q in frozen["questions"]]
     else:
+        excluded = ({q["key"] for q in json.loads(QUESTIONS.read_text())["questions"]}
+                    if question_set == "own" else set())
         rng = random.Random(seed)
         chosen = []
         for kind, prefix in SOURCES.items():
             pool = sorted(key for key, r in rows.items() if r["dataset"].startswith(prefix)
-                          and gold_answer(kind, r["golden_answer"]) is not None)
+                          and key not in excluded and gold_answer(kind, r["golden_answer"]) is not None)
             chosen += [(key, kind) for key in rng.sample(pool, n // 2)]
         rng.shuffle(chosen)
+        if question_set == "own":
+            frozen_path.write_text(json.dumps({
+                "n": n, "seed": seed, "source": "SPROUT test split, disjoint from the live set",
+                "questions": [{"key": k, "kind": kind} for k, kind in chosen]}, indent=1))
     return [{"key": key, "source": SOURCES[kind].split("/")[-1], "kind": kind,
              "prompt": rows[key]["prompt"], "gold": rows[key]["golden_answer"]} for key, kind in chosen]
 
@@ -167,7 +177,7 @@ def ask(client: LLMClient, spec, prompt: str, pacer: Pacer, budget: DailyBudget,
 def record(q: dict, small, large, routers: dict) -> dict:
     gold = gold_answer(q["kind"], q["gold"])
     out = {"key": q["key"], "source": q["source"], "kind": q["kind"], "gold": str(gold),
-           "n_words": extract(q["prompt"]).n_words,
+           "n_words": extract(q["prompt"]).n_words, "features_v2": extract_v2(q["prompt"]).to_dict(),
            "scores": {name: router(q["prompt"]) for name, router in routers.items()}}
     for tier, r in (("small", small), ("large", large)):
         answer = extract_answer(q["kind"], r.text, parse_options(q["prompt"]))
@@ -291,7 +301,9 @@ def print_summary(summary: dict, records: list[dict]) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--preset", default="groq-mixed", choices=sorted(PRESETS))
-    ap.add_argument("--n", type=int, default=200)
+    ap.add_argument("--question-set", choices=("live", "own"), default="live",
+                    help="live: the 200-question test set; own: 300 other questions standing in for own traffic")
+    ap.add_argument("--n", type=int, default=None, help="default 200 (live) or 300 (own)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions (smoke test)")
     ap.add_argument("--tpm-small", type=int, default=6000, help="tokens per minute for the small model")
     ap.add_argument("--tpm-large", type=int, default=8000, help="tokens per minute for the large model")
@@ -314,7 +326,8 @@ def main() -> None:
         return
 
     specs = PRESETS[args.preset]
-    questions = select_questions(args.n, args.seed)[:args.limit]
+    n = args.n or (200 if args.question_set == "live" else 300)
+    questions = select_questions(n, args.seed, args.question_set)[:args.limit]
     client, pacer = LLMClient(), Pacer({"small": args.tpm_small, "large": args.tpm_large})
     budget = DailyBudget(ROOT / "data" / "live_benchmark_usage.json", args.daily_token_budget)
     outcome, classifier = OutcomeRouter(), ClassifierRouter()
@@ -358,7 +371,8 @@ def main() -> None:
     summary = analyze(records, ROUTE_THRESHOLD)
     print_summary(summary, records)
     complete = len(records) == len(questions)
-    suffix = (f"_limit{args.limit}" if args.limit else "") + (f"_{args.tag}" if args.tag else "")
+    suffix = (("_own" if args.question_set == "own" else "")
+              + (f"_limit{args.limit}" if args.limit else "") + (f"_{args.tag}" if args.tag else ""))
     out = RESULTS / f"live_exact_{args.preset}{suffix}.json"
     out.write_text(json.dumps({
         "preset": args.preset, "models": {t: specs[t].model_id for t in ("small", "large")},
