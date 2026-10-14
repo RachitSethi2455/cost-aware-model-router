@@ -1,4 +1,5 @@
 {
+ "feature_set": "v1",
  "pairs": {
   "Llama 3.1 8B -> 70B": [
    "wxai-llama-3-1-8b-instruct",
@@ -251,14 +252,36 @@
    }
   }
  },
- "shipped": {
-  "settings": {
-   "max_leaf_nodes": 3,
-   "trees": 200,
-   "learning_rate": 0.05,
-   "interaction_cst": "no_interactions"
+ "unseen_source": {
+  "OpenHermes (chat)": {
+   "n": 2912,
+   "apgr_outcome": 0.5811807351094336,
+   "apgr_first": 0.5022567376077041,
+   "apgr_length": 0.5978027642156307,
+   "outcome_minus_first_ci": [
+    0.05510242627701345,
+    0.10230085091738339
+   ]
   },
-  "validation_apgr": 0.6370949207262481,
-  "large_share_at_default_threshold": 0.49871930088895583
+  "MMLU-Pro": {
+   "n": 1772,
+   "apgr_outcome": 0.5013067333532399,
+   "apgr_first": 0.515146685577785,
+   "apgr_length": 0.5185954762615704,
+   "outcome_minus_first_ci": [
+    -0.037636540708999244,
+    0.008822284402352554
+   ]
+  },
+  "MATH": {
+   "n": 1462,
+   "apgr_outcome": 0.5218658620872983,
+   "apgr_first": 0.5292958158328455,
+   "apgr_length": 0.5530860226487312,
+   "outcome_minus_first_ci": [
+    -0.0225450473908968,
+    0.007424535704945168
+   ]
+  }
  }
 }

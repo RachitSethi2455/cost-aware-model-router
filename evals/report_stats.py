@@ -29,7 +29,7 @@ RESULTS = Path(__file__).resolve().parents[1] / "results"
 BOOTSTRAP_RESAMPLES = 10_000
 SEED = 0
 # Routed arms, in report order; a results file reports the ones it contains.
-ROUTED_ARMS = ("heuristic", "classifier", "outcome")
+ROUTED_ARMS = ("heuristic", "classifier", "outcome", "outcome_v1")
 
 
 def wilson(successes: int, n: int, z: float = 1.96) -> tuple[float, float]:
@@ -78,19 +78,25 @@ def _interval(values: list[float]) -> tuple[float, float]:
     return values[int(0.025 * len(values))], values[int(0.975 * len(values)) - 1]
 
 
-def replay_outcome_arm(arms: dict) -> dict:
-    """The outcome router's arm for a run made before it existed: each question
-    takes the recorded always-small or always-large answer, whichever tier the
-    router picks at the default threshold. No model is called."""
+def outcome_routers() -> dict:
+    """The shipped outcome router and its frozen first version (v1 features)."""
     import sys
     sys.path.insert(0, str(RESULTS.parent / "src"))
-    from router.config import ROUTE_THRESHOLD
     from router.outcome import OutcomeRouter
+    return {"outcome": OutcomeRouter(),
+            "outcome_v1": OutcomeRouter(RESULTS.parent / "evals" / "models" / "outcome_model_v1.json")}
+
+
+def replay_outcome_arm(arms: dict, router) -> dict:
+    """An outcome router's arm for a run made before it existed: each question
+    takes the recorded always-small or always-large answer, whichever tier the
+    router picks at the default threshold. No model is called."""
+    from router.config import ROUTE_THRESHOLD
 
     dataset = RESULTS.parent / "evals" / "dataset.jsonl"
     queries = {row["id"]: row["query"] for row in
                (json.loads(line) for line in dataset.read_text(encoding="utf-8").splitlines() if line)}
-    router, out = OutcomeRouter(), {}
+    out = {}
     for qid in arms["always_small"]:
         tier = router.route(queries[qid], ROUTE_THRESHOLD)[0]
         out[qid] = {**arms[f"always_{tier}"][qid], "tier_chosen": tier}
@@ -102,7 +108,8 @@ def benchmark_report(path: Path) -> str:
     arms = {s["arm"]: {r["id"]: r for r in s["records"]} for s in summaries}
     replayed = "outcome" not in arms
     if replayed:
-        arms["outcome"] = replay_outcome_arm(arms)
+        for name, router in outcome_routers().items():
+            arms[name] = replay_outcome_arm(arms, router)
     ids = list(arms["always_small"])
     point = _arm_stats(arms, ids)
 
@@ -126,7 +133,7 @@ def benchmark_report(path: Path) -> str:
         pgr_draws = [d[arm]["pgr"] for d in draws if d[arm]["pgr"] is not None]
         pgr_ci = _interval(pgr_draws) if pgr_draws else (float("nan"), float("nan"))
         undefined = 1 - len(pgr_draws) / BOOTSTRAP_RESAMPLES
-        label = f"{arm} (replayed on the recorded answers)" if arm == "outcome" and replayed else arm
+        label = f"{arm} (replayed on the recorded answers)" if arm.startswith("outcome") and replayed else arm
         lines.append(
             f"| {label} | {p['quality']:.3f} [{ci['quality'][0]:.3f}, {ci['quality'][1]:.3f}] "
             f"| {p['retention']:.0%} [{ci['retention'][0]:.0%}, {ci['retention'][1]:.0%}] "
@@ -165,18 +172,17 @@ def exact_answer_report(path: Path) -> str:
 def eval_set_routing() -> str:
     """How many of the 60 hand-written questions each learned router sends to
     the large model at the default threshold."""
-    import sys
-    sys.path.insert(0, str(RESULTS.parent / "src"))
+    routers = outcome_routers()
     from router.classifier import ClassifierRouter
     from router.config import ROUTE_THRESHOLD
-    from router.outcome import OutcomeRouter
 
     dataset = RESULTS.parent / "evals" / "dataset.jsonl"
     queries = [json.loads(line)["query"] for line in dataset.read_text(encoding="utf-8").splitlines() if line]
     counts = {name: sum(router.route(q, ROUTE_THRESHOLD)[0] == "large" for q in queries)
-              for name, router in (("outcome", OutcomeRouter()), ("classifier", ClassifierRouter()))}
+              for name, router in (*routers.items(), ("classifier", ClassifierRouter()))}
     return (f"At threshold {ROUTE_THRESHOLD}, the large model gets {counts['outcome']} of "
-            f"{len(queries)} eval-set questions from the outcome router and "
+            f"{len(queries)} eval-set questions from the outcome router (v2 features), "
+            f"{counts['outcome_v1']} from its first version (v1 features) and "
             f"{counts['classifier']} from the first (classifier) router.")
 
 

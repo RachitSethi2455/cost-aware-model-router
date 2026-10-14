@@ -171,7 +171,7 @@ class TestOutcomeRouter:
             c = router.contributions(q)
             total = c["intercept"] + sum(f["contribution"] for f in c["features"])
             assert abs(total - c["predicted_gain"]) < 1e-12
-            assert [f["name"] for f in c["features"]] == FEATURE_NAMES
+            assert [f["name"] for f in c["features"]] == router.feature_names
 
     def test_score_is_a_monotone_percentile_and_sets_the_tier(self):
         from router.outcome import OutcomeRouter

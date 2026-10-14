@@ -63,6 +63,8 @@ from router.outcome import OutcomeRouter
 
 DATA = ROOT / "data" / "sprout"
 RESULTS = ROOT / "results"
+# The first outcome router (v1 features), frozen so it stays comparable.
+OUTCOME_V1 = ROOT / "evals" / "models" / "outcome_model_v1.json"
 SPLITS = {
     "train": ["train-00000-of-00003", "train-00001-of-00003", "train-00002-of-00003"],
     "validation": ["validation-00000-of-00001"],
@@ -90,7 +92,8 @@ TABLE = [  # (router, training target), in print order
     ("tfidf_ridge", "gain"), ("seven_features_gbm", "gain"), ("seven_features_ridge", "gain"),
     ("minilm_knn_label", "label"), ("minilm_lr", "label"), ("tfidf_lr", "label"),
     ("seven_features_lr", "label"),
-    ("outcome_router", "gain, 6 pairs"), ("length", "none"), ("heuristic", "none"),
+    ("outcome_router", "gain, 6 pairs, v2 features"), ("outcome_router_v1", "gain, 6 pairs, v1 features"),
+    ("length", "none"), ("heuristic", "none"),
     ("label_router", "60 hand labels"),
 ]
 # Paired comparisons on the same resampled queries: (router, baseline).
@@ -170,11 +173,12 @@ def predict(model, x) -> np.ndarray:
     return model.predict_proba(x)[:, 1] if hasattr(model, "predict_proba") else model.predict(x)
 
 
-def tune(build, grid, x_train, y_train, x_val, val):
+def tune(build, grid, x_train, y_train, x_val, val, sample_weight=None):
     """Fit one model per setting; keep the one with the best validation APGR."""
     best = None
     for setting in grid:
-        model = build(setting).fit(x_train, y_train)
+        fit_args = {} if sample_weight is None else {"sample_weight": sample_weight}
+        model = build(setting).fit(x_train, y_train, **fit_args)
         value = summarize(predict(model, x_val), val["small"], val["large"])["apgr"]
         if best is None or value > best[0]:
             best = (value, setting, model)
@@ -224,6 +228,8 @@ def train_routers(train, val, test, feats, emb) -> tuple[dict, dict]:
     label_router, outcome_router = ClassifierRouter(), OutcomeRouter()
     scores["label_router"] = np.array([label_router.route(p)[1] for p in test["prompt"]])
     scores["outcome_router"] = np.array([outcome_router.route(p)[1] for p in test["prompt"]])
+    v1 = OutcomeRouter(OUTCOME_V1)
+    scores["outcome_router_v1"] = np.array([v1.route(p)[1] for p in test["prompt"]])
     scores["heuristic"] = np.array([heuristic.score(extract(p)) for p in test["prompt"]])
     scores["length"] = feats["test"][:, 0]
 

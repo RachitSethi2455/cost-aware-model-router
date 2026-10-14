@@ -276,7 +276,7 @@
       <ol class="how">
         <li><strong>Compute exact answers.</strong> For calculations (arithmetic, counting letters, primality, reversing text) the small model writes one Python expression and a locked-down evaluator computes it. On fresh held-out questions this took the small model from 58% to 100% correct.</li>
         <li><strong>Read the question.</strong> Seven cheap, readable signals: length, number of sentences, reasoning words, simple-task words, whether it asks for or contains code, and listed constraints. No embeddings and no extra model call.</li>
-        <li><strong>Decide.</strong> A lightweight scoring model trained on 31,000 recorded outcomes predicts how much better the large model's answer would be graded. In that data, from six pairs of small and large models, one-sentence questions rarely gained much from the large model, while longer multi-part problems and pasted code did. Questions in the top half of that training data go to the large model, so most one-sentence questions stay on the small one. Tested on model pairs it never saw, it beat this router's first version, trained on 60 hand labels, on 5 of 6.</li>
+        <li><strong>Decide.</strong> A lightweight scoring model trained on 31,000 recorded outcomes predicts how much better the large model's answer would be graded. In that data, from six pairs of small and large models, maths and multiple-choice questions gained most from the large model and short everyday questions least. It ignores layout, so line breaks and how answer options are laid out do not change its score. Questions in the top half of that training data go to the large model, so most short questions stay on the small one. Tested on model pairs it never saw, it beat this router's first version, trained on 60 hand labels, on 5 of 6.</li>
         <li><strong>Check the cheap answer.</strong> Deterministic checks, not a second AI call: empty, refused, cut off, hedging, or missing code that was asked for.</li>
         <li><strong>Escalate if needed.</strong> A failed check retries once on the large model, so a wrong routing guess costs one extra call, not a wrong answer.</li>
       </ol>
@@ -303,6 +303,8 @@
     n_constraints: "Listed constraints",
     n_words: "Word count",
     n_sentences: "Sentences",
+    is_multiple_choice: "Multiple choice",
+    has_math: "Maths",
   };
   const $ = (id) => document.getElementById(id);
   const form = $("form"), query = $("query"), go = $("go");

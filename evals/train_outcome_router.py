@@ -40,6 +40,7 @@ import numpy as np
 from routing_metrics import paired_bootstrap, summarize
 from sprout_replay import (
     ADDITIVE_LEAVES,
+    MAIN_SOURCES,
     MIN_SOURCE_GAP,
     RESULTS,
     ROOT,
@@ -47,9 +48,10 @@ from sprout_replay import (
     load_models,
     tune,
 )
+from sprout_unseen_source import from_source, subset
 
 from router.classifier import ClassifierRouter
-from router.features import FEATURE_NAMES, extract
+from router.features import FEATURE_SETS
 from router.outcome import MODEL_PATH, OutcomeRouter
 
 ROUTER_PAIRS = {  # small -> large; no model appears in two pairs
@@ -80,7 +82,7 @@ def fit(x: dict, train: dict, val: dict, pairs: list[str]):
                 pooled(val, pairs))
 
 
-def export(model, x_train: np.ndarray) -> tuple[float, dict]:
+def export(model, x_train: np.ndarray, names: list[str]) -> tuple[float, dict]:
     """Base value and per-feature step functions of an additive model.
 
     With no interactions, predict(x) = predict(0) + sum_i [predict(0 with x_i) -
@@ -88,12 +90,12 @@ def export(model, x_train: np.ndarray) -> tuple[float, dict]:
     time. The features are whole numbers, and values above the training
     maximum fall in the last bin, so evaluating 0..max is exact.
     """
-    zero = np.zeros((1, len(FEATURE_NAMES)))
+    zero = np.zeros((1, len(names)))
     at_zero = float(model.predict(zero)[0])
     base, steps = at_zero, {}
-    for i, name in enumerate(FEATURE_NAMES):
+    for i, name in enumerate(names):
         top = int(x_train[:, i].max())
-        grid = np.zeros((top + 1, len(FEATURE_NAMES)))
+        grid = np.zeros((top + 1, len(names)))
         grid[:, i] = np.arange(top + 1)
         f = model.predict(grid) - at_zero
         # Centre on the average training prompt, so the base is the mean
@@ -200,32 +202,103 @@ def short_prompts(scores: dict, t: dict, x_test: np.ndarray, resamples: int) -> 
             "unseen_minus_label_router_ci": diff["diff_ci"]}
 
 
+def load_own_traffic(path: Path, names: list[str]) -> tuple[np.ndarray, np.ndarray]:
+    """Rows written by evals/label_shadow.py: v2 features and the gain measured
+    on your own models."""
+    rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+    if not rows:
+        raise SystemExit(f"{path} has no graded pairs")
+    return (np.array([[float(r["features_v2"][n]) for n in names] for r in rows]),
+            np.array([float(r["gain"]) for r in rows]))
+
+
+def unseen_source(x: dict, train: dict, val: dict, test: dict, resamples: int) -> dict:
+    """Hold out a whole kind of prompt: train on the other sources (six pairs
+    pooled), test on that source's test prompts, scored on the pairs' average.
+    The question the live test raised: does the router transfer to a kind of
+    prompt it did not learn from?"""
+    label_router, pairs, rows = ClassifierRouter(), list(ROUTER_PAIRS), {}
+    print("\nUnseen source: trained without it, tested on its test prompts (six pairs pooled).")
+    print("| Held-out source | Test prompts | Outcome router | First router | Length "
+          "| Outcome minus first router [95% CI] |")
+    print("|---|---|---|---|---|---|")
+    for prefix, label in MAIN_SOURCES.items():
+        masks = {"train": ~from_source(train, prefix), "val": ~from_source(val, prefix),
+                 "test": from_source(test, prefix)}
+        data = {k: subset(d, masks[k]) for k, d in (("train", train), ("val", val), ("test", test))}
+        xs = {k: x[k][m] for k, m in masks.items()}
+        model, _ = fit(xs, data["train"], data["val"], pairs)
+        t = pooled(data["test"], pairs)
+        scores = {"outcome": model.predict(xs["test"]),
+                  "first": np.array([label_router.route(p)[1] for p in data["test"]["prompt"]]),
+                  "length": xs["test"][:, 0]}
+        apgr = {k: summarize(v, t["small"], t["large"])["apgr"] for k, v in scores.items()}
+        diff = paired_bootstrap(scores["outcome"], t["small"], t["large"],
+                                baseline_scores=scores["first"], resamples=resamples)["diff_ci"]
+        rows[label] = {"n": int(masks["test"].sum()), **{f"apgr_{k}": v for k, v in apgr.items()},
+                       "outcome_minus_first_ci": diff}
+        print(f"| {label} | {rows[label]['n']} | {apgr['outcome']:.3f} | {apgr['first']:.3f} "
+              f"| {apgr['length']:.3f} | {apgr['outcome'] - apgr['first']:+.3f} "
+              f"[{diff[0]:+.3f}, {diff[1]:+.3f}] |")
+    return rows
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--resamples", type=int, default=1000)
+    ap.add_argument("--features", choices=sorted(FEATURE_SETS), default="v2")
+    ap.add_argument("--no-export", action="store_true",
+                    help="evaluate only; leave the shipped model file alone")
+    ap.add_argument("--own-traffic", type=Path, default=None,
+                    help="graded pairs from evals/label_shadow.py to add to the shipped model's training")
+    ap.add_argument("--own-weight", type=float, default=5.0,
+                    help="weight of each own-traffic row relative to a SPROUT prompt")
     args = ap.parse_args()
+    names, extract = FEATURE_SETS[args.features]
 
     train, val, test = (load_models(s, MODELS) for s in ("train", "validation", "test"))
     x = {name: np.array([extract(p).to_vector() for p in d["prompt"]])
          for name, d in (("train", train), ("val", val), ("test", test))}
     print(f"SPROUT: {len(train['prompt'])} train, {len(val['prompt'])} validation, "
-          f"{len(test['prompt'])} test prompts; {len(ROUTER_PAIRS)} model pairs")
+          f"{len(test['prompt'])} test prompts; {len(ROUTER_PAIRS)} model pairs; "
+          f"{args.features} features ({len(names)})")
     lopo = leave_one_pair_out(x, train, val, test, args.resamples)
+    unseen = unseen_source(x, train, val, test, args.resamples)
+    report = {"feature_set": args.features, "pairs": {k: list(v) for k, v in ROUTER_PAIRS.items()},
+              "leave_one_pair_out": lopo, "unseen_source": unseen}
+    out = RESULTS / f"outcome_router_training_{args.features}.json"
+    if args.no_export:
+        out.write_text(json.dumps(report, indent=1))
+        print(f"\nWrote {out.relative_to(ROOT)} (evaluation only; shipped model unchanged)")
+        return
 
     pairs = list(ROUTER_PAIRS)
-    model, leaves = fit(x, train, val, pairs)
+    x_fit, y_fit, weights, own_rows = x["train"], pooled(train, pairs)["gain"], None, 0
+    if args.own_traffic:
+        if args.features != "v2":
+            raise SystemExit("--own-traffic rows carry v2 features; use --features v2")
+        own_x, own_gain = load_own_traffic(args.own_traffic, names)
+        own_rows = len(own_gain)
+        x_fit, y_fit = np.vstack([x_fit, own_x]), np.concatenate([y_fit, own_gain])
+        weights = np.concatenate([np.ones(len(x["train"])), np.full(own_rows, args.own_weight)])
+        print(f"\nAdding {own_rows} graded pairs from your own traffic, each weighted {args.own_weight}")
+    model, leaves = tune(additive, ADDITIVE_LEAVES, x_fit, y_fit, x["val"], pooled(val, pairs),
+                         sample_weight=weights)
     val_apgr = summarize(model.predict(x["val"]), *(pooled(val, pairs)[k] for k in ("small", "large")))["apgr"]
     print(f"\nShipped model: all six pairs, max_leaf_nodes={leaves} chosen on validation "
           f"(APGR on the pairs' average {val_apgr:.3f}), {model.n_iter_} trees (early stopping, at most 200)")
 
-    base, steps = export(model, x["train"])
+    base, steps = export(model, x_fit, names)
     spec = {
+        "feature_set": args.features,
         "description": "Additive router: predicted gain = base + sum of per-feature step "
                        "functions. Written by evals/train_outcome_router.py; see "
                        "src/router/outcome.py.",
         "trained_on": {"dataset": "CARROT-LLM-Routing/SPROUT, train split",
                        "prompts": len(train["prompt"]), "pairs": ROUTER_PAIRS,
-                       "target": "large grade - small grade, averaged over the pairs"},
+                       "target": "large grade - small grade, averaged over the pairs",
+                       "own_traffic_rows": own_rows,
+                       "own_traffic_weight": args.own_weight if own_rows else None},
         "settings": {"max_leaf_nodes": leaves, "trees": int(model.n_iter_),
                      "learning_rate": 0.05, "interaction_cst": "no_interactions"},
         "validation_apgr": round(val_apgr, 4),
@@ -254,11 +327,8 @@ def main() -> None:
     shipped = np.array([router.route(p)[1] for p in test["prompt"]])
     print(f"Default threshold 0.5 sends {(shipped >= 0.5).mean():.0%} of SPROUT test prompts "
           "to the large model")
-    report = {"pairs": {k: list(v) for k, v in ROUTER_PAIRS.items()},
-              "leave_one_pair_out": lopo,
-              "shipped": {"settings": spec["settings"], "validation_apgr": val_apgr,
-                          "large_share_at_default_threshold": float((shipped >= 0.5).mean())}}
-    out = RESULTS / "outcome_router_training.json"
+    report["shipped"] = {"settings": spec["settings"], "validation_apgr": val_apgr,
+                         "large_share_at_default_threshold": float((shipped >= 0.5).mean())}
     out.write_text(json.dumps(report, indent=1))
     print(f"Wrote {out.relative_to(ROOT)}")
 

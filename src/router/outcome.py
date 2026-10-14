@@ -27,7 +27,7 @@ from bisect import bisect_right
 from pathlib import Path
 
 from . import heuristic
-from .features import FEATURE_NAMES, extract
+from .features import FEATURE_SETS
 
 MODEL_PATH = Path(__file__).with_name("outcome_model.json")
 
@@ -40,8 +40,11 @@ class OutcomeRouter:
                   file=sys.stderr)
             return
         spec = json.loads(path.read_text(encoding="utf-8"))
-        if list(spec["features"]) != FEATURE_NAMES:
-            raise ValueError(f"{path.name} was trained on other features; "
+        # Model files from before the v2 features carry no "feature_set".
+        self.feature_set = spec.get("feature_set", "v1")
+        self.feature_names, self.extract = FEATURE_SETS[self.feature_set]
+        if list(spec["features"]) != self.feature_names:
+            raise ValueError(f"{path.name} does not match the {self.feature_set} features; "
                              "re-run evals/train_outcome_router.py")
         self.base = spec["base"]
         self.steps = {name: (f["from"], f["contribution"]) for name, f in spec["features"].items()}
@@ -50,9 +53,9 @@ class OutcomeRouter:
 
     def _terms(self, query: str) -> list[tuple[str, float, float]]:
         """(feature, value, contribution to the predicted gain) per feature."""
-        values = extract(query).to_vector()
+        values = self.extract(query).to_vector()
         terms = []
-        for name, value in zip(FEATURE_NAMES, values, strict=True):
+        for name, value in zip(self.feature_names, values, strict=True):
             starts, contributions = self.steps[name]
             terms.append((name, value, contributions[bisect_right(starts, value) - 1]))
         return terms

@@ -1,0 +1,297 @@
+{
+ "feature_set": "v2",
+ "pairs": {
+  "Llama 3.1 8B -> 70B": [
+   "wxai-llama-3-1-8b-instruct",
+   "wxai-llama-3-1-70b-instruct"
+  ],
+  "GPT-4o-mini -> GPT-4o": [
+   "openai-gpt-4o-mini",
+   "openai-gpt-4o"
+  ],
+  "Granite 3 2B -> 8B": [
+   "wxai-granite-3-2b-instruct-8k-max-tokens",
+   "wxai-granite-3-8b-instruct-8k-max-tokens"
+  ],
+  "Llama 3.2 3B -> 3.3 70B": [
+   "wxai-llama-3-2-3b-instruct",
+   "wxai-llama-3-3-70b-instruct"
+  ],
+  "Llama 3.2 1B -> 3 405B": [
+   "wxai-llama-3-2-1b-instruct",
+   "wxai-llama-3-405b-instruct"
+  ],
+  "Mixtral 8x7B -> Claude 3.5 Sonnet": [
+   "wxai-mixtral-8x7b-instruct-v01",
+   "aws-claude-3-5-sonnet-v1"
+  ]
+ },
+ "leave_one_pair_out": {
+  "Llama 3.1 8B -> 70B": {
+   "gap": 0.12382100346542113,
+   "leaves": 3,
+   "apgr_unseen": 0.6449123874422019,
+   "apgr_own": 0.6439778534923363,
+   "apgr_label_router": 0.5688038452178172,
+   "apgr_length": 0.5739924555853034,
+   "apgr_single_pair": 0.6439778534923363,
+   "apgr_unseen_ci": [
+    0.6248509052183197,
+    0.666251717819515
+   ],
+   "unseen_minus_label_router_ci": [
+    0.05464844202478769,
+    0.10021389059618868
+   ],
+   "unseen_minus_length_ci": [
+    0.048484227308961514,
+    0.09414191640908431
+   ],
+   "pgr_at_half": {
+    "unseen": 0.726454125091263,
+    "own": 0.735458749087371,
+    "label_router": 0.646264297882698,
+    "length": 0.6659771233876868,
+    "single_pair": 0.735458749087371
+   },
+   "short": {
+    "n": 3921,
+    "gap": 0.0933945422086202,
+    "apgr_unseen": 0.6251802293828533,
+    "apgr_label_router": 0.5441480065537941,
+    "apgr_length": 0.5567586018569088,
+    "unseen_minus_label_router_ci": [
+     0.042333808844510656,
+     0.11513472137171299
+    ]
+   }
+  },
+  "GPT-4o-mini -> GPT-4o": {
+   "gap": 0.04099743860177796,
+   "leaves": 3,
+   "apgr_unseen": 0.7109169423006241,
+   "apgr_own": 0.8462752664461579,
+   "apgr_label_router": 0.7723612642410865,
+   "apgr_length": 0.7810161705255412,
+   "apgr_single_pair": 0.7217364939360519,
+   "apgr_unseen_ci": [
+    0.6601009101701643,
+    0.7680507868383403
+   ],
+   "unseen_minus_label_router_ci": [
+    -0.12534560480841395,
+    0.00504050722085303
+   ],
+   "unseen_minus_length_ci": [
+    -0.1389742604686902,
+    -0.007388429752066439
+   ],
+   "pgr_at_half": {
+    "unseen": 0.7824329290701945,
+    "own": 0.9492833517089297,
+    "label_router": 0.9051819184123487,
+    "length": 0.9298052186696043,
+    "single_pair": 0.8206541712605657
+   },
+   "short": null
+  },
+  "Granite 3 2B -> 8B": {
+   "gap": 0.10493445833961124,
+   "leaves": 7,
+   "apgr_unseen": 0.6018124057721308,
+   "apgr_own": 0.6278185799411304,
+   "apgr_label_router": 0.5151270730131381,
+   "apgr_length": 0.5175701773278776,
+   "apgr_single_pair": 0.5792953550147181,
+   "apgr_unseen_ci": [
+    0.5752883955138474,
+    0.6260406389476155
+   ],
+   "unseen_minus_label_router_ci": [
+    0.05825923787528897,
+    0.11362300409778209
+   ],
+   "unseen_minus_length_ci": [
+    0.05698100220264324,
+    0.11006096654275088
+   ],
+   "pgr_at_half": {
+    "unseen": 0.6616411802713767,
+    "own": 0.7103883983056937,
+    "label_router": 0.5596955991097718,
+    "length": 0.5760643262258617,
+    "single_pair": 0.6220116304113739
+   },
+   "short": {
+    "n": 3921,
+    "gap": 0.09440193828105081,
+    "apgr_unseen": 0.6729143590436301,
+    "apgr_label_router": 0.5061508847764427,
+    "apgr_length": 0.47808793732270727,
+    "unseen_minus_label_router_ci": [
+     0.12334049120923185,
+     0.21266248661874787
+    ]
+   }
+  },
+  "Llama 3.2 3B -> 3.3 70B": {
+   "gap": 0.1707895133343379,
+   "leaves": 3,
+   "apgr_unseen": 0.6700398313233886,
+   "apgr_own": 0.6720917399627718,
+   "apgr_label_router": 0.6015855336867997,
+   "apgr_length": 0.6148849611390959,
+   "apgr_single_pair": 0.6648099741515447,
+   "apgr_unseen_ci": [
+    0.6526848874598083,
+    0.6876835535976509
+   ],
+   "unseen_minus_label_router_ci": [
+    0.04925416138718919,
+    0.08761980476261189
+   ],
+   "unseen_minus_length_ci": [
+    0.03735016345804665,
+    0.07443954358040217
+   ],
+   "pgr_at_half": {
+    "unseen": 0.7644261731052554,
+    "own": 0.7707780120508487,
+    "label_router": 0.6914682452162705,
+    "length": 0.7141407814526304,
+    "single_pair": 0.7704251321094272
+   },
+   "short": {
+    "n": 3921,
+    "gap": 0.1110252486610559,
+    "apgr_unseen": 0.6737127007098043,
+    "apgr_label_router": 0.5607958330461933,
+    "apgr_length": 0.5856526083660655,
+    "unseen_minus_label_router_ci": [
+     0.07615913781242778,
+     0.14701991415100635
+    ]
+   }
+  },
+  "Llama 3.2 1B -> 3 405B": {
+   "gap": 0.3126713876751545,
+   "leaves": 7,
+   "apgr_unseen": 0.6253334618350035,
+   "apgr_own": 0.6340020239013092,
+   "apgr_label_router": 0.579776407093291,
+   "apgr_length": 0.5982180030840393,
+   "apgr_single_pair": 0.6304139360061668,
+   "apgr_unseen_ci": [
+    0.6146742906774754,
+    0.6371921801186033
+   ],
+   "unseen_minus_label_router_ci": [
+    0.03358917121823879,
+    0.05760105871029875
+   ],
+   "unseen_minus_length_ci": [
+    0.01575082508250847,
+    0.039155602494468145
+   ],
+   "pgr_at_half": {
+    "unseen": 0.6954992289899776,
+    "own": 0.6975231303006926,
+    "label_router": 0.6500096376252887,
+    "length": 0.6783442559753272,
+    "single_pair": 0.705474171164224
+   },
+   "short": {
+    "n": 3921,
+    "gap": 0.22109155827594995,
+    "apgr_unseen": 0.6245339716230245,
+    "apgr_label_router": 0.5431370400276847,
+    "apgr_length": 0.5778227015803439,
+    "unseen_minus_label_router_ci": [
+     0.05750173490631594,
+     0.104499226177315
+    ]
+   }
+  },
+  "Mixtral 8x7B -> Claude 3.5 Sonnet": {
+   "gap": 0.21029832755763156,
+   "leaves": 7,
+   "apgr_unseen": 0.6158525882142164,
+   "apgr_own": 0.6651748164069404,
+   "apgr_label_router": 0.5425923338706757,
+   "apgr_length": 0.5337533584094549,
+   "apgr_single_pair": 0.6076795629589772,
+   "apgr_unseen_ci": [
+    0.601903902235796,
+    0.6297041109321329
+   ],
+   "unseen_minus_label_router_ci": [
+    0.05996835329233541,
+    0.08707630123386545
+   ],
+   "unseen_minus_length_ci": [
+    0.07043820071096474,
+    0.09518291132342438
+   ],
+   "pgr_at_half": {
+    "unseen": 0.6666666666666683,
+    "own": 0.7548629768941426,
+    "label_router": 0.5770374350707524,
+    "length": 0.5644277270284813,
+    "single_pair": 0.662797778971881
+   },
+   "short": {
+    "n": 3921,
+    "gap": 0.18570517725070146,
+    "apgr_unseen": 0.6575015450113362,
+    "apgr_label_router": 0.5322224129643659,
+    "apgr_length": 0.5221832726773377,
+    "unseen_minus_label_router_ci": [
+     0.10131266863274346,
+     0.147320274773858
+    ]
+   }
+  }
+ },
+ "unseen_source": {
+  "OpenHermes (chat)": {
+   "n": 2912,
+   "apgr_outcome": 0.5498477868142353,
+   "apgr_first": 0.5022567376077041,
+   "apgr_length": 0.5978027642156307,
+   "outcome_minus_first_ci": [
+    0.022216483692883426,
+    0.07387458334145552
+   ]
+  },
+  "MMLU-Pro": {
+   "n": 1772,
+   "apgr_outcome": 0.509481934905942,
+   "apgr_first": 0.515146685577785,
+   "apgr_length": 0.5185954762615704,
+   "outcome_minus_first_ci": [
+    -0.028261276503835586,
+    0.01677351489882639
+   ]
+  },
+  "MATH": {
+   "n": 1462,
+   "apgr_outcome": 0.5047038651709277,
+   "apgr_first": 0.5292958158328455,
+   "apgr_length": 0.5530860226487312,
+   "outcome_minus_first_ci": [
+    -0.042352721052069886,
+    -0.0057991032314600455
+   ]
+  }
+ },
+ "shipped": {
+  "settings": {
+   "max_leaf_nodes": 3,
+   "trees": 200,
+   "learning_rate": 0.05,
+   "interaction_cst": "no_interactions"
+  },
+  "validation_apgr": 0.6425337233090374,
+  "large_share_at_default_threshold": 0.48696700316408015
+ }
+}

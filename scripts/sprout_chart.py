@@ -26,7 +26,8 @@ LINES = {  # router: (legend label, colour, line style)
     "seven_features_gbm": ("7 features, boosted trees (gain)", "#e37400", "-"),
     "length": ("Prompt length only", "#9aa0a6", "--"),
     "label_router": ("First router (60 hand labels)", "#c5221f", "-."),
-    "outcome_router": ("Shipped router (outcomes, 6 pairs)", "#9334e6", "-"),
+    "outcome_router": ("Shipped router, v2 features (outcomes, 6 pairs)", "#9334e6", "-"),
+    "outcome_router_v1": ("Outcome router, v1 features", "#9334e6", ":"),
 }
 
 

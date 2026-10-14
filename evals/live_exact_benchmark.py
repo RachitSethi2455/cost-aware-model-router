@@ -301,6 +301,7 @@ def main() -> None:
                     help="reply cap for the small model (lower it for short-context models)")
     ap.add_argument("--cached-only", action="store_true", help="re-score from the cache, no calls")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--tag", default="", help="suffix for the results file, e.g. v2 for a re-score")
     ap.add_argument("--report", type=Path, default=None,
                     help="recompute the summary from a results file; no calls, no cache, no data")
     args = ap.parse_args()
@@ -357,7 +358,7 @@ def main() -> None:
     summary = analyze(records, ROUTE_THRESHOLD)
     print_summary(summary, records)
     complete = len(records) == len(questions)
-    suffix = f"_limit{args.limit}" if args.limit else ""
+    suffix = (f"_limit{args.limit}" if args.limit else "") + (f"_{args.tag}" if args.tag else "")
     out = RESULTS / f"live_exact_{args.preset}{suffix}.json"
     out.write_text(json.dumps({
         "preset": args.preset, "models": {t: specs[t].model_id for t in ("small", "large")},
