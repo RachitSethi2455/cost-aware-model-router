@@ -47,6 +47,7 @@ evals/train_outcome_router.py  trains + exports the shipped router; leave-one-pa
 evals/live_exact_benchmark.py  live calls on held-out SPROUT questions, exact-match graded, routers replayed
 evals/exact_match.py       answer extraction + exact grading (letters, numbers as fractions)
 evals/label_shadow.py      grades logged own-traffic pairs offline -> training rows (--own-traffic)
+evals/own_traffic_experiment.py  trains on a pair's own outcomes, tests once on the live set
 evals/models/              frozen outcome router v1, kept for comparison
 ```
 

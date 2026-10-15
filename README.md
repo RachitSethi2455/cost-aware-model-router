@@ -47,9 +47,12 @@ so it is free to use.
   question as a sentence and sent those to the large model, while the large
   model helped more on maths. Version 2, rebuilt to ignore formatting, is
   2.5 points worse; which kinds of question gain most depends on the model
-  pair, so the service can now log outcomes from your own. The run also
+  pair. Trained on 300 of that pair's own outcomes, it moved from below
+  random routing (APGR 0.475) to above it (0.525), a significant gain over
+  the shipped router but not yet reliably above random. The run also
   caught three bugs, now fixed. See
-  [the live test](#live-test-200-questions-graded-by-exact-match).
+  [the live test](#live-test-200-questions-graded-by-exact-match) and
+  [the own-traffic experiment](#does-it-work-an-experiment-on-the-live-pair).
 - **What the offline evaluation found** (6,637 held-out prompts, no API
   cost; [details](#offline-evaluation-on-sprout-6637-graded-prompts-0)):
   - Training on *how much* the large model helps beats training on
@@ -677,8 +680,10 @@ Written up deliberately — these are the interesting parts.
    router was tested on pairs it never saw, and in the live test on a pair
    it never saw, it did worse than random routing. The fix that would settle
    it is to log both models' answers on a sample of real traffic and train
-   on that. The service can now do this ([own traffic](#learning-from-your-own-traffic)),
-   but it has not yet been run on real traffic.
+   on that. The service can now do this ([own traffic](#learning-from-your-own-traffic)).
+   In an experiment with 300 of the live pair's own outcomes, it lifted the
+   router from below random routing (0.475) to above it (0.525), but not
+   yet reliably above it. It has not been run on real users' traffic.
 
 7. **The live tests are small and narrow.** The 14-question Gemini run gives
    intervals about ±25 points wide, so it cannot rank routers; the Gemini
@@ -1151,8 +1156,44 @@ pair. Collecting outcomes from your own pair takes three steps:
 - The shadow log holds question and answer text, so enable it only where
   users have agreed to that, and never on a public demo (which makes no
   model calls anyway).
-- So far this is tested plumbing, not a result: it has not been run on real
-  traffic, so there is no number yet for how much it helps.
+- It has not been run on real users' traffic yet; the experiment below
+  stands in for it.
+
+### Does it work? An experiment on the live pair
+
+The experiment plays out the loop on allam-2-7b → gpt-oss-120b, the pair
+where no router beat random routing (`evals/own_traffic_experiment.py`):
+
+- **Own traffic.** 300 more held-out SPROUT questions stand in for a
+  service's own traffic. They never overlap the 200 live test questions.
+  Both models answered every one, graded by exact match rather than the
+  judge (13–15 October). The large model was right where the small one was
+  wrong on 215 of them.
+- **Settings.** The weight of one own question against one SPROUT prompt
+  was chosen on 100 of the 300. Validation APGR rose with the weight
+  (0.508 at 1×, 0.528 at 100×, the top of the range tried), so it was set
+  to 100×.
+- **Test, once.** A final model, trained on SPROUT plus all 300, scored the
+  200 live questions' cached answers.
+
+| Router | APGR [95% CI] | Minus shipped router [95% CI] | Quality gap recovered at 50% large calls |
+|---|---|---|---|
+| Shipped router (other models' outcomes only) | 0.475 [0.440, 0.508] | – | 44% |
+| **Plus the pair's own 300 outcomes** | **0.525** [0.487, 0.563] | **+0.004 to +0.098** | **55%** |
+| The own 300 outcomes alone | 0.510 [0.469, 0.550] | −0.020 to +0.093 | 51% |
+| Prompt length | 0.444 [0.401, 0.481] | −0.064 to +0.002 | 40% |
+| Random routing | 0.500 | | 50% |
+
+- **Training on the pair's own outcomes helps.** It moves the router from
+  below random routing to above it, and the gain over the shipped router
+  is significant.
+- **It is not yet enough to beat random routing reliably.** The interval
+  still includes 0.5, and a router that knew the outcomes would score 0.71.
+- **SPROUT plus own data beats either alone.** With this weak a small
+  model, which is right on only about 20% of questions, the signal for
+  "where will the small model manage?" is thin. More own traffic is the
+  next lever, and validation favoured the largest weight tried, so a
+  larger one may help.
 
 ## Project layout
 

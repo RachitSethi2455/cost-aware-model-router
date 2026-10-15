@@ -165,7 +165,11 @@ def ask(client: LLMClient, spec, prompt: str, pacer: Pacer, budget: DailyBudget,
         result = client.complete(spec, prompt, system=SYSTEM, max_tokens=max_tokens)
         pacer.used(spec.name, result.input_tokens + result.output_tokens)
         budget.add(spec.model_id, result.input_tokens + result.output_tokens)
-        if not result.error or ("429" not in result.error and "RateLimit" not in result.error):
+        # Groq answers a burst over its tokens-per-minute limit with 413
+        # "Request too large ... on tokens per minute", not only 429.
+        per_minute = "tokens per minute" in result.error if result.error else False
+        if not result.error or ("429" not in result.error and "RateLimit" not in result.error
+                                and not per_minute):
             return result  # an answer, or a real failure (never cached, retried next run)
         if DAILY.search(result.error):
             raise DailyLimit(result.error)
