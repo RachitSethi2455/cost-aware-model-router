@@ -16,12 +16,13 @@ collect the pair's own outcomes, train on them, and test once.
 - Test, once: the 200 live questions' cached answers, against the shipped
   router (no own data) and a router trained on the own rows alone.
 
-Usage (after the collection is complete):
-    python evals/own_traffic_experiment.py
+Usage (after the collection is complete; --own-n 300 reproduces the first run):
+    python evals/own_traffic_experiment.py --own-n 900
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -45,12 +46,17 @@ SPLIT_SEED = 0
 HALF = 50  # index of a 50% large-call share on routing_metrics.COST_GRID
 
 
-def own_rows(path: Path) -> dict:
-    saved = json.loads(path.read_text())
-    if not saved["complete"]:
-        raise SystemExit(f"{path.name} is partial ({len(saved['records'])} of {saved['questions']} "
-                         "questions); finish the collection first: scripts/collect_own_traffic.ps1")
-    recs = saved["records"]
+def own_rows(path: Path, n: int) -> dict:
+    """The first n own-traffic questions (the frozen order), all of which
+    must have been answered: n=300 reproduces the first experiment after the
+    collection grew."""
+    keys = [q["key"] for q in select_questions(n, 0, "own")]
+    by_key = {r["key"]: r for r in json.loads(path.read_text())["records"]}
+    missing = [k for k in keys if k not in by_key]
+    if missing:
+        raise SystemExit(f"{len(missing)} of the first {n} own-traffic questions are not answered yet; "
+                         "finish the collection first: scripts/collect_own_traffic.ps1")
+    recs = [by_key[k] for k in keys]
     return {"x": np.array([[float(r["features_v2"][n]) for n in FEATURE_NAMES_V2] for r in recs]),
             "small": np.array([float(r["small"]["correct"]) for r in recs]),
             "large": np.array([float(r["large"]["correct"]) for r in recs])}
@@ -69,7 +75,11 @@ def fit(x_sprout, y_sprout, own: dict, weight: float, val: dict):
 
 
 def main() -> None:
-    own = own_rows(OWN)
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--own-n", type=int, default=900,
+                    help="how many own-traffic questions to train on (300 = the first experiment)")
+    args = ap.parse_args()
+    own = own_rows(OWN, args.own_n)
     live_saved = json.loads(LIVE.read_text())
     prompts = {q["key"]: q["prompt"] for q in select_questions(200, 0, "live")}
     live = {"x": np.array([extract_v2(prompts[r["key"]]).to_vector() for r in live_saved["records"]]),
@@ -85,9 +95,10 @@ def main() -> None:
     y_sprout = pooled(train, list(ROUTER_PAIRS))["gain"]
 
     order = np.random.default_rng(SPLIT_SEED).permutation(len(own["x"]))
-    own_train, own_val = take(own, order[:200]), take(own, order[200:])
+    cut = len(order) * 2 // 3  # 200 / 100 for the first 300
+    own_train, own_val = take(own, order[:cut]), take(own, order[cut:])
     print(f"Own traffic: {len(own['x'])} questions; the large model was right and the small one wrong on "
-          f"{int(((own['large'] - own['small']) > 0).sum())}. Choosing the weight on {len(order[200:])}:")
+          f"{int(((own['large'] - own['small']) > 0).sum())}. Choosing the weight on {len(order[cut:])}:")
     best = None
     for weight in WEIGHTS:
         model, leaves = fit(x_sprout, y_sprout, own_train, weight, own_val)
@@ -121,7 +132,7 @@ def main() -> None:
     oracle = summarize(live["large"] - live["small"], live["small"], live["large"])
     report["oracle_apgr"] = oracle["apgr"]
     print(f"Random routing: APGR 0.500, 50% at 50% large calls. Oracle APGR {oracle['apgr']:.2f}.")
-    out = RESULTS / "own_traffic_experiment.json"
+    out = RESULTS / f"own_traffic_experiment_{args.own_n}.json"
     out.write_text(json.dumps(report, indent=1))
     print(f"Wrote {out.relative_to(ROOT)}")
 

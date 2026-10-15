@@ -95,18 +95,24 @@ def select_questions(n: int, seed: int = 0, question_set: str = "live") -> list[
                                   for values in zip(*cols.values(), strict=True))}
     frozen_path = QUESTIONS if question_set == "live" else QUESTIONS_OWN
     frozen = json.loads(frozen_path.read_text()) if frozen_path.exists() else None
-    if frozen and (frozen["n"], frozen["seed"]) == (n, seed):
-        chosen = [(q["key"], q["kind"]) for q in frozen["questions"]]
+    if frozen and frozen["seed"] == seed and (frozen["n"] == n or (question_set == "own" and frozen["n"] > n)):
+        chosen = [(q["key"], q["kind"]) for q in frozen["questions"]][:n]
     else:
+        # The own set only grows: questions already asked (and cached) keep
+        # their place, and new ones are drawn from what neither set uses.
+        chosen = ([(q["key"], q["kind"]) for q in frozen["questions"]]
+                  if question_set == "own" and frozen and frozen["n"] < n else [])
         excluded = ({q["key"] for q in json.loads(QUESTIONS.read_text())["questions"]}
-                    if question_set == "own" else set())
-        rng = random.Random(seed)
-        chosen = []
+                    if question_set == "own" else set()) | {key for key, _ in chosen}
+        rng = random.Random(seed + len(chosen))
+        added = []
         for kind, prefix in SOURCES.items():
             pool = sorted(key for key, r in rows.items() if r["dataset"].startswith(prefix)
                           and key not in excluded and gold_answer(kind, r["golden_answer"]) is not None)
-            chosen += [(key, kind) for key in rng.sample(pool, n // 2)]
-        rng.shuffle(chosen)
+            have = sum(1 for _, k in chosen if k == kind)
+            added += [(key, kind) for key in rng.sample(pool, n // 2 - have)]
+        rng.shuffle(added)
+        chosen += added
         if question_set == "own":
             frozen_path.write_text(json.dumps({
                 "n": n, "seed": seed, "source": "SPROUT test split, disjoint from the live set",
@@ -306,8 +312,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--preset", default="groq-mixed", choices=sorted(PRESETS))
     ap.add_argument("--question-set", choices=("live", "own"), default="live",
-                    help="live: the 200-question test set; own: 300 other questions standing in for own traffic")
-    ap.add_argument("--n", type=int, default=None, help="default 200 (live) or 300 (own)")
+                    help="live: the 200-question test set; own: other questions standing in for own traffic (900)")
+    ap.add_argument("--n", type=int, default=None, help="default 200 (live) or 900 (own)")
     ap.add_argument("--limit", type=int, default=None, help="only the first N questions (smoke test)")
     ap.add_argument("--tpm-small", type=int, default=6000, help="tokens per minute for the small model")
     ap.add_argument("--tpm-large", type=int, default=8000, help="tokens per minute for the large model")
@@ -330,7 +336,7 @@ def main() -> None:
         return
 
     specs = PRESETS[args.preset]
-    n = args.n or (200 if args.question_set == "live" else 300)
+    n = args.n or (200 if args.question_set == "live" else 900)
     questions = select_questions(n, args.seed, args.question_set)[:args.limit]
     client, pacer = LLMClient(), Pacer({"small": args.tpm_small, "large": args.tpm_large})
     budget = DailyBudget(ROOT / "data" / "live_benchmark_usage.json", args.daily_token_budget)
