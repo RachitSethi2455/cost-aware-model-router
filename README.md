@@ -12,7 +12,28 @@ Type any question and see which model the router picks, and why. The public
 demo shows routing decisions and recorded answers and makes no model calls,
 so it is free to use.
 
-**At a glance** (`python evals/report_stats.py` reproduces every interval)
+## Results in brief
+
+- **Exact answers:** for maths and counting questions the small model writes
+  code that a sandbox computes, instead of guessing: **23/40 → 40/40** correct.
+- **Offline, 6,637 graded prompts per model pair:** a router trained on real
+  outcomes beat my first, hand-labelled router on **5 of 6** model pairs it
+  never saw (APGR 0.645 vs 0.597; random routing scores 0.5).
+- **Live, 200 code-checked questions on a new model pair:** **no router beat
+  random routing**, because which questions gain from the big model depends on
+  the pair.
+- **Trained on 300 of that pair's own outcomes**, the router moved from below
+  random (0.475) to above it (0.525): a real gain, not yet a clear win.
+- **Production pieces:** an OpenAI-compatible API with streaming, spending
+  guardrails, Prometheus metrics, a per-request decision log, and a free demo
+  that makes no model calls.
+
+Every number comes from a script in `evals/` and a results file in
+`results/`, with its sample size and a 95% interval. Click a section's
+"details" to see the evidence.
+
+<details>
+<summary>At a glance: each result with its caveats (<code>python evals/report_stats.py</code> reproduces every interval)</summary>
 
 - **Exact answers, computed instead of guessed: the clearest result.** For
   arithmetic, counting letters, primality and similar questions, the small
@@ -77,6 +98,10 @@ so it is free to use.
   own traffic, Docker / Render / Vercel configs, and an offline test suite
   plus lint in CI.
 
+</details>
+
+## How it works
+
 Per-request model selection for LLM applications. Predicts how much a large
 model would improve the answer to each query, dispatches to a small or large
 model accordingly, and escalates automatically when the small model's answer
@@ -87,7 +112,7 @@ bill is spent on requests that never needed the expensive model?**
 
 ```
                       ┌──────────────────┐
-   query ────────────▶│ feature extract  │  7 interpretable features
+   query ────────────▶│ feature extract  │  9 interpretable features
                       └────────┬─────────┘
                                ▼
                       ┌──────────────────┐
@@ -111,6 +136,9 @@ bill is spent on requests that never needed the expensive model?**
 ```
 
 ## Design decisions
+
+<details>
+<summary>Why it is built this way</summary>
 
 **Escalation checks are deterministic, not a second LLM call.** Asking a model
 to grade its own answer costs roughly what calling the large model costs, which
@@ -147,7 +175,12 @@ outcomes transferred about as well.
 logic is importable and testable without the `anthropic` package or an API key.
 CI runs the full offline suite on every push.
 
+</details>
+
 ## Results
+
+<details>
+<summary>The 14-question live Gemini run, and the first router's accuracy</summary>
 
 These live results are for the first two routers: the hand-written
 heuristic and the classifier trained on my labels. The router now shipped
@@ -309,7 +342,12 @@ model):
 | `n_words` | +0.316 |
 | `n_sentences` | +0.309 |
 
+</details>
+
 ## Offline evaluation on SPROUT: 6,637 graded prompts, $0
+
+<details>
+<summary>Setup, the results table and chart, and the router now shipped (versions 1 and 2)</summary>
 
 Fourteen live questions cannot rank routers, and my 60 labels record how hard
 a question looks, not what happened. [SPROUT](https://huggingface.co/datasets/CARROT-LLM-Routing/SPROUT)
@@ -561,7 +599,12 @@ python evals/sprout_unseen_source.py --pair llama
 python scripts/sprout_chart.py
 ```
 
+</details>
+
 ## Live test: 200 questions, graded by exact match
+
+<details>
+<summary>Both model pairs, every router against random routing, and the three bugs it caught</summary>
 
 The 14-question Gemini run could not rank routers, and an LLM from the same
 family graded it. This run fixes both. It used 200 questions from SPROUT's
@@ -640,6 +683,8 @@ from the cached answers (`results/live_exact_groq-allam_v2.json`).
 - Each question was asked once, at the default temperature.
 - The question mix is half multiple choice and half maths, not chat
   traffic.
+
+</details>
 
 ## Known limitations
 
@@ -721,6 +766,9 @@ Written up deliberately — these are the interesting parts.
     ranks routing methods; it does not predict savings on Gemini.
 
 ## Silent failures: measured, then fixed with a calculator
+
+<details>
+<summary>How often small models fail without a sign, and the calculator that fixes it</summary>
 
 Escalation can only see an answer that *looks* broken. For exact-answer
 questions a small model answers fluently and confidently whether it is right
@@ -855,7 +903,12 @@ under different load.
 **The code tool is on by default** (`ENABLE_CODE_TOOL=1`); the risk rules stay
 opt-in. Single-turn questions only, so conversation context is never dropped.
 
+</details>
+
 ## Lessons from live testing
+
+<details>
+<summary>What only live calls revealed</summary>
 
 The offline test suite passed from day one. Running against real Gemini
 models still found four bugs, each now fixed and covered by a test:
@@ -894,6 +947,8 @@ Two more found later:
 `gemini-3.8-flash` stayed unusable on the free tier (overloaded and
 quota-exhausted for a week), so the `gemini-free` preset uses
 `gemini-3.6-flash` as the large model and `gemini-3.5-flash` as the judge.
+
+</details>
 
 ## Using a different provider
 
@@ -1161,6 +1216,9 @@ pair. Collecting outcomes from your own pair takes three steps:
 
 ### Does it work? An experiment on the live pair
 
+<details>
+<summary>Setup and results</summary>
+
 The experiment plays out the loop on allam-2-7b → gpt-oss-120b, the pair
 where no router beat random routing (`evals/own_traffic_experiment.py`):
 
@@ -1194,6 +1252,8 @@ where no router beat random routing (`evals/own_traffic_experiment.py`):
   "where will the small model manage?" is thin. More own traffic is the
   next lever, and validation favoured the largest weight tried, so a
   larger one may help.
+
+</details>
 
 ## Project layout
 
