@@ -6,15 +6,17 @@ on the pair, and the routers had only other pairs' outcomes (SPROUT). This
 experiment plays out the fix the service now supports (router/shadow.py):
 collect the pair's own outcomes, train on them, and test once.
 
-- Own traffic: 300 held-out SPROUT questions, disjoint from the live test set
-  (evals/own_traffic_questions.json), both models' answers graded by exact
-  match (live_exact_benchmark.py --question-set own). Gain = large right
-  minus small right.
-- Settings: the 300 are split 200 / 100 (fixed seed); the weight of an own
-  row against a SPROUT row and the tree size are chosen by APGR on the 100.
-- Final model: SPROUT's six pairs plus all 300 own rows at that weight.
-- Test, once: the 200 live questions' cached answers, against the shipped
-  router (no own data) and a router trained on the own rows alone.
+- Own traffic: the first n of 900 held-out SPROUT questions, disjoint from
+  the live test set (evals/own_traffic_questions.json), both models' answers
+  graded by exact match (live_exact_benchmark.py --question-set own).
+  Gain = large right minus small right.
+- Settings: the n are split 2/3 / 1/3 (fixed seed); the weight of an own
+  row against a SPROUT row and the tree size are chosen by APGR on the 1/3.
+- Final model: SPROUT's six pairs plus all n own rows at that weight.
+- Test: the 200 live questions' cached answers, against the shipped router
+  (no own data) and a router trained on the own rows alone. The first run
+  used n=300; the second, n=900, re-used this test set with the plan fixed
+  in advance (README: "Does it work?").
 
 Usage (after the collection is complete; --own-n 300 reproduces the first run):
     python evals/own_traffic_experiment.py --own-n 900

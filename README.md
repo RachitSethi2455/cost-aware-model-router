@@ -22,8 +22,9 @@ so it is free to use.
 - **Live, 200 code-checked questions on a new model pair:** **no router beat
   random routing**, because which questions gain from the big model depends on
   the pair.
-- **Trained on 300 of that pair's own outcomes**, the router moved from below
-  random (0.475) to above it (0.525): a real gain, not yet a clear win.
+- **Trained on 900 of that pair's own outcomes**, the router went from below
+  random (0.475) to clearly above it (**0.552**, 95% interval 0.514–0.594).
+  With the first 300 it reached 0.525, not yet a clear win.
 - **Production pieces:** an OpenAI-compatible API with streaming, spending
   guardrails, Prometheus metrics, a per-request decision log, and a free demo
   that makes no model calls.
@@ -68,9 +69,10 @@ Every number comes from a script in `evals/` and a results file in
   question as a sentence and sent those to the large model, while the large
   model helped more on maths. Version 2, rebuilt to ignore formatting, is
   2.5 points worse; which kinds of question gain most depends on the model
-  pair. Trained on 300 of that pair's own outcomes, it moved from below
-  random routing (APGR 0.475) to above it (0.525), a significant gain over
-  the shipped router but not yet reliably above random. The run also
+  pair. Trained on that pair's own outcomes, it moved from below random
+  routing (APGR 0.475) to above it: 0.525 with 300 questions, not yet
+  reliably above random, and 0.552 [0.514, 0.594] with 900, reliably
+  above it. The run also
   caught three bugs, now fixed. See
   [the live test](#live-test-200-questions-graded-by-exact-match) and
   [the own-traffic experiment](#does-it-work-an-experiment-on-the-live-pair).
@@ -726,9 +728,9 @@ Written up deliberately — these are the interesting parts.
    it never saw, it did worse than random routing. The fix that would settle
    it is to log both models' answers on a sample of real traffic and train
    on that. The service can now do this ([own traffic](#learning-from-your-own-traffic)).
-   In an experiment with 300 of the live pair's own outcomes, it lifted the
-   router from below random routing (0.475) to above it (0.525), but not
-   yet reliably above it. It has not been run on real users' traffic.
+   In an experiment with 900 of the live pair's own outcomes, it lifted the
+   router from below random routing (0.475) to reliably above it (0.552,
+   interval 0.514–0.594). It has not been run on real users' traffic.
 
 7. **The live tests are small and narrow.** The 14-question Gemini run gives
    intervals about ±25 points wide, so it cannot rank routers; the Gemini
@@ -1222,36 +1224,45 @@ pair. Collecting outcomes from your own pair takes three steps:
 The experiment plays out the loop on allam-2-7b → gpt-oss-120b, the pair
 where no router beat random routing (`evals/own_traffic_experiment.py`):
 
-- **Own traffic.** 300 more held-out SPROUT questions stand in for a
+- **Own traffic.** 900 more held-out SPROUT questions stand in for a
   service's own traffic. They never overlap the 200 live test questions.
   Both models answered every one, graded by exact match rather than the
-  judge (13–15 October). The large model was right where the small one was
-  wrong on 215 of them.
+  judge (13–19 October). The large model was right where the small one was
+  wrong on 606 of them.
 - **Settings.** The weight of one own question against one SPROUT prompt
-  was chosen on 100 of the 300. Validation APGR rose with the weight
-  (0.508 at 1×, 0.528 at 100×, the top of the range tried), so it was set
+  was chosen on 300 of the 900. Validation APGR rose with the weight
+  (0.488 at 1×, 0.541 at 100×, the top of the range tried), so it was set
   to 100×.
-- **Test, once.** A final model, trained on SPROUT plus all 300, scored the
-  200 live questions' cached answers.
+- **Test.** A final model, trained on SPROUT plus all 900, scored the 200
+  live questions' cached answers. A first run with 300 questions had
+  used the same script and the same settings rule.
 
 | Router | APGR [95% CI] | Minus shipped router [95% CI] | Quality gap recovered at 50% large calls |
 |---|---|---|---|
 | Shipped router (other models' outcomes only) | 0.475 [0.440, 0.508] | – | 44% |
-| **Plus the pair's own 300 outcomes** | **0.525** [0.487, 0.563] | **+0.004 to +0.098** | **55%** |
-| The own 300 outcomes alone | 0.510 [0.469, 0.550] | −0.020 to +0.093 | 51% |
+| Plus the pair's own outcomes, first 300 | 0.525 [0.487, 0.563] | +0.004 to +0.098 | 55% |
+| **Plus the pair's own outcomes, all 900** | **0.552** [0.514, 0.594] | **+0.027 to +0.133** | **57%** |
+| The own 900 outcomes alone | 0.543 [0.505, 0.582] | +0.009 to +0.129 | 59% |
 | Prompt length | 0.444 [0.401, 0.481] | −0.064 to +0.002 | 40% |
 | Random routing | 0.500 | | 50% |
 
-- **Training on the pair's own outcomes helps.** It moves the router from
-  below random routing to above it, and the gain over the shipped router
-  is significant.
-- **It is not yet enough to beat random routing reliably.** The interval
-  still includes 0.5, and a router that knew the outcomes would score 0.71.
-- **SPROUT plus own data beats either alone.** With this weak a small
-  model, which is right on only about 20% of questions, the signal for
-  "where will the small model manage?" is thin. More own traffic is the
-  next lever, and validation favoured the largest weight tried, so a
-  larger one may help.
+- **Training on the pair's own outcomes works.** With 900 questions the
+  router beats random routing: the interval excludes 0.5. With half the
+  questions on the large model, it recovers 57% of the quality gap, where
+  random routing recovers 50% and the shipped router 44%.
+- **The amount of data mattered.** With the first 300 questions the same
+  method scored 0.525, and its interval still included 0.5.
+- **The pair's own data does most of the work.** The 900 own outcomes alone
+  score 0.543; adding SPROUT's prompts gives 0.552, a difference well
+  within the noise.
+- **It is still far from perfect.** A router that knew the outcomes would
+  score 0.71. Surface features see the question, not what each model
+  knows, and the small model is right on only about 20% of questions.
+- **Caveat: this is a second look at the same test set.** Both runs were
+  scored on the same 200 live questions. The second run's plan (the same
+  script and settings rule, only more data) was fixed before it ran, and
+  both results are reported, but a fresh test set would make the result
+  firmer.
 
 </details>
 
