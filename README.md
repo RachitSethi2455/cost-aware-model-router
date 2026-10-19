@@ -1035,6 +1035,11 @@ python scripts/sprout_chart.py
 python evals/live_exact_benchmark.py --preset groq-allam --max-tokens-small 1024
 python evals/live_exact_benchmark.py --report results/live_exact_groq-allam.json   # no key needed
 
+# Own-traffic experiment: both models answer 900 more questions (needs
+# GROQ_API_KEY; about 170 a day on the free tier), then train and test once
+python evals/live_exact_benchmark.py --preset groq-allam --question-set own --max-tokens-small 1024
+python evals/own_traffic_experiment.py --own-n 900   # no key; --own-n 300 reproduces the first run
+
 # Serve
 uvicorn api.main:app --reload --app-dir src
 ```
@@ -1205,7 +1210,9 @@ pair. Collecting outcomes from your own pair takes three steps:
    question to `data/shadow_labels.jsonl`.
 3. **Retrain.** `python evals/train_outcome_router.py --own-traffic data/shadow_labels.jsonl`
    adds those rows to SPROUT's, each weighted 5× by default
-   (`--own-weight`).
+   (`--own-weight`). In the experiment below, held-out own questions
+   favoured 100×, so choose the weight the same way once you have a few
+   hundred rows.
 
 **Costs and caveats:**
 

@@ -97,7 +97,7 @@ def main() -> None:
     y_sprout = pooled(train, list(ROUTER_PAIRS))["gain"]
 
     order = np.random.default_rng(SPLIT_SEED).permutation(len(own["x"]))
-    cut = len(order) * 2 // 3  # 200 / 100 for the first 300
+    cut = len(order) * 2 // 3  # 600 / 300 for all 900; 200 / 100 for the first 300
     own_train, own_val = take(own, order[:cut]), take(own, order[cut:])
     print(f"Own traffic: {len(own['x'])} questions; the large model was right and the small one wrong on "
           f"{int(((own['large'] - own['small']) > 0).sum())}. Choosing the weight on {len(order[cut:])}:")

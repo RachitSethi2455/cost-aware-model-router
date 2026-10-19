@@ -47,7 +47,7 @@ evals/train_outcome_router.py  trains + exports the shipped router; leave-one-pa
 evals/live_exact_benchmark.py  live calls on held-out SPROUT questions, exact-match graded, routers replayed
 evals/exact_match.py       answer extraction + exact grading (letters, numbers as fractions)
 evals/label_shadow.py      grades logged own-traffic pairs offline -> training rows (--own-traffic)
-evals/own_traffic_experiment.py  trains on a pair's own outcomes, tests once on the live set
+evals/own_traffic_experiment.py  trains on a pair's own outcomes (--own-n 300 | 900), tests on the live set
 evals/models/              frozen outcome router v1, kept for comparison
 ```
 
@@ -61,6 +61,8 @@ uvicorn api.main:app --reload --app-dir src
 python evals/sprout_replay.py --pair llama   # offline, $0; ~550 MB data, not redistributed
 python evals/train_outcome_router.py         # retrains src/router/outcome_model.json (needs the data)
 python evals/live_exact_benchmark.py --report results/live_exact_groq-allam.json   # live results, no key
+scripts/collect_own_traffic.ps1              # own-traffic answers; Groq key shared with other tools, stops at a daily budget
+python evals/own_traffic_experiment.py --own-n 900   # no key; needs the SPROUT data
 ```
 
 ## Conventions
